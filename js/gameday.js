@@ -4,7 +4,6 @@
   const PREFS_KEY = 'almanac-gameday.prefs.v2';   // v2: new defaults (This week, no teams)
   const DEFAULT_PREFS = { mode: 'week', teams: [] };
   const UPCOMING_PER_TEAM = 4;
-  const RECENT_DAYS = 8;            // also show a followed team's last game if it was this recent
   const REFRESH_MS = 30 * 60 * 1000;
 
   const $ = (id) => document.getElementById(id);
@@ -29,13 +28,14 @@
 
   // ---------- Which games ----------
 
+  // Live and upcoming games only: once a game is final it moves to the Past Games tab.
   async function gamesToShow() {
     if (prefs.mode === 'week') {
       const w = await Football.thisWeek();
-      return { title: w.label, games: w.games };
+      const games = w.games.filter((g) => g.state !== 'post');
+      return { title: w.label, games, finals: w.games.length - games.length };
     }
     if (!prefs.teams.length) return { title: 'No teams picked', games: [] };
-    const now = Date.now();
     const failed = [];
     let lastError = null;
     const lists = await Promise.all(prefs.teams.map((t) => Football.teamSchedule(t).catch((err) => {
@@ -47,9 +47,7 @@
     const byId = new Map();
     for (const list of lists) {
       const upcoming = list.filter((g) => g.state !== 'post').sort((a, b) => a.kickoff - b.kickoff).slice(0, UPCOMING_PER_TEAM);
-      const recent = list.filter((g) => g.state === 'post' && now - g.kickoff < RECENT_DAYS * 86400000)
-        .sort((a, b) => b.kickoff - a.kickoff).slice(0, 1);
-      for (const g of [...recent, ...upcoming]) byId.set(g.id, g);
+      for (const g of upcoming) byId.set(g.id, g);
     }
     const note = failed.length ? ` (couldn’t load ${failed.join(', ')})` : '';
     return { title: `Upcoming games${note}`, games: [...byId.values()] };
@@ -80,7 +78,7 @@
       : g.state === 'post' ? `<span class="gd-final">${esc(g.detail || 'Final')}</span>` : '';
     const place = [g.venue.city, g.venue.state || g.venue.country].filter(Boolean).join(', ');
     return `
-      <article class="game roof-${g.roof}" data-i="${i}">
+      <article class="game roof-${g.roof}${g.state === 'post' ? ' past' : ''}" data-i="${i}">
         <header class="gd-head">
           <div class="gd-matchup">${team(g.away)}<span class="gd-at">@</span>${team(g.home)}</div>
           <div class="gd-when"><span>${esc(w.text)}</span><span class="gd-rel">${esc(w.rel)}</span>${statusTag}</div>
@@ -96,7 +94,7 @@
         <div class="gd-slot gd-odds" data-slot="probs"><p class="gd-wait">Loading odds…</p></div>
         <div class="gd-slot" data-slot="lines"></div>
         <div class="gd-slot" data-slot="result"></div>
-        <div class="gd-slot gd-radar-wrap" data-slot="radar"></div>
+        ${g.state === 'post' ? '' : '<div class="gd-slot gd-radar-wrap" data-slot="radar"></div>'}
       </article>`;
   }
 
@@ -346,9 +344,15 @@
     const games = result.games.sort((a, b) => indoors(a) - indoors(b) || a.kickoff - b.kickoff);
     const following = prefs.mode === 'mine' && prefs.teams.length ? ` · following ${prefs.teams.join(', ')}` : '';
     const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    $('gd-sub').textContent = `${result.title}${following} · ${games.length} game${games.length === 1 ? '' : 's'} · updated ${updated}`;
+    const finals = result.finals ? ` · ${result.finals} final (in Past Games)` : '';
+    $('gd-sub').textContent = `${result.title}${following} · ${games.length} live or upcoming game${games.length === 1 ? '' : 's'}${finals} · updated ${updated}`;
+    shown = games;
     if (!games.length) {
-      $('gd-list').innerHTML = `<p class="empty-note">${prefs.mode === 'mine' ? 'No teams yet. Click <b>Teams…</b> and search for the teams you want to follow.' : 'No games scheduled this week.'}</p>`;
+      const note = prefs.mode === 'mine' && !prefs.teams.length
+        ? 'No teams yet. Click <b>Teams…</b> and search for the teams you want to follow.'
+        : result.finals ? 'All of this week’s games are final. See <b>Past Games</b> for results; next week’s games appear once ESPN posts them.'
+          : 'No upcoming games.';
+      $('gd-list').innerHTML = `<p class="empty-note">${note}</p>`;
       return;
     }
     $('gd-list').innerHTML = games.map(cardShell).join('');
@@ -358,6 +362,25 @@
       fillOdds(card, g);
     });
   }
+
+  // ---------- Moving finished games to Past Games ----------
+
+  // While a shown game is under way (or past its kickoff time), check ESPN's scoreboard every few
+  // minutes. When one goes final, redraw so it leaves this tab, and reload Past Games so it's there.
+  const LIVE_CHECK_MS = 3 * 60 * 1000;
+  let shown = [];
+
+  setInterval(async () => {
+    if (document.hidden || !shown.some((g) => g.state === 'in' || g.kickoff <= Date.now())) return;
+    let week;
+    try { week = await Football.thisWeek(); } catch { return; }
+    const finished = new Set(week.games.filter((g) => g.state === 'post').map((g) => g.id));
+    if (!shown.some((g) => finished.has(g.id))) return;
+    Football.clearSeason();
+    pastAt = 0;
+    render();
+    if (!$('past-view').hidden) renderPast();
+  }, LIVE_CHECK_MS);
 
   // ---------- Past games tab ----------
 

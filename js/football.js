@@ -551,9 +551,11 @@ const Football = (() => {
 
   // Just the odds summaries (lines, projections, injury reports), e.g. for a prop refresh;
   // forecasts and market prices are left alone.
+  function clearSeason() { seasonCache = null; }
+
   function clearOdds() {
     oddsCache.clear();
   }
 
-  return { clearCaches, clearOdds, teams, teamSchedule, thisWeek, seasonSoFar, locate, hourly, pastHourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
+  return { clearCaches, clearOdds, clearSeason, teams, teamSchedule, thisWeek, seasonSoFar, locate, hourly, pastHourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
 })();

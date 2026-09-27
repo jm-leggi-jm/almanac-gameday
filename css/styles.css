@@ -300,6 +300,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: grid; grid-template-rows: subgrid; row-gap: 12px;   /* same gap between every row, even empty ones, so rows line up exactly */
   border: 1px solid var(--grid); border-radius: 10px; padding: 16px; min-width: 0;
 }
+.game.past { grid-row: span 9; }   /* finished games (Past Games tab) have no radar row */
 .gd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
 .gd-matchup { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; }
 .gd-team { display: inline-flex; align-items: center; gap: 6px; }
