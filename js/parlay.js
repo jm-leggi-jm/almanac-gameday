@@ -294,13 +294,16 @@
 
   // ---------- Tabs ----------
 
+  // Each tab shows one section. Section ids differ from the tab names, so a #parlays link switches tabs without scrolling.
+  const VIEWS = { games: 'gameday', parlays: 'parlays-view', past: 'past-view' };
+
   function setTab(tab) {
-    const parlays = tab === 'parlays';
-    $('gameday').hidden = parlays;
-    $('parlays-view').hidden = !parlays;   // not id="parlays", so a #parlays link switches tabs without scrolling
+    if (!VIEWS[tab]) tab = 'games';
+    for (const [name, id] of Object.entries(VIEWS)) $(id).hidden = name !== tab;
     document.querySelectorAll('#tabs [data-tab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tab === tab)));
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* fine */ }
-    if (parlays) render();
+    if (tab === 'parlays') render();
+    document.dispatchEvent(new CustomEvent('tabchange', { detail: tab }));
   }
 
   $('tabs').addEventListener('click', (e) => {
@@ -309,9 +312,9 @@
   });
   $('p-rebuild').addEventListener('click', render);
 
-  // A link ending in #parlays or #games opens that tab; otherwise the last tab used.
+  // A link ending in #games, #parlays or #past opens that tab; otherwise the last tab used.
   let saved = 'games';
-  try { saved = localStorage.getItem(TAB_KEY) === 'parlays' ? 'parlays' : 'games'; } catch { /* fine */ }
-  if (location.hash === '#parlays' || location.hash === '#games') saved = location.hash.slice(1);
+  try { saved = localStorage.getItem(TAB_KEY) || 'games'; } catch { /* fine */ }
+  if (VIEWS[location.hash.slice(1)]) saved = location.hash.slice(1);
   setTab(saved);
 })();

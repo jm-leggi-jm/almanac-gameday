@@ -96,10 +96,10 @@ const Football = (() => {
   }
 
   // JSON from Open-Meteo, reused for `maxAgeMs` across page loads when Cache Storage is available.
-  async function meteoJSON(url, maxAgeMs = 0) {
+  async function meteoJSON(url, maxAgeMs = 0, cacheName = METEO_CACHE) {
     let cache = null;
     if (maxAgeMs && 'caches' in self) {
-      try { cache = await caches.open(METEO_CACHE); } catch { cache = null; }
+      try { cache = await caches.open(cacheName); } catch { cache = null; }
     }
     if (cache) {
       const hit = await cache.match(url);
@@ -181,6 +181,38 @@ const Football = (() => {
     return { label: d.week ? `Week ${d.week.number}` : 'This week', games: (d.events || []).map(normalize) };
   }
 
+  // Every finished game this season, week by week from Week 1 (and the playoffs once they start).
+  // One scoreboard request per week; kept for 30 minutes.
+  const PAST_TTL_MS = 30 * 60 * 1000;
+  const POSTSEASON = ['', 'Wild Card', 'Divisional round', 'Conference championships', 'Pro Bowl', 'Super Bowl'];
+  let seasonCache = null;
+
+  function seasonSoFar() {
+    if (seasonCache && Date.now() - seasonCache.at < PAST_TTL_MS) return seasonCache.promise;
+    const promise = (async () => {
+      const d = await getJSON(`${ESPN}/scoreboard`);
+      const year = d.season && d.season.year;
+      const type = d.season && d.season.type;        // 1 preseason, 2 regular season, 3 playoffs
+      const current = (d.week && d.week.number) || 1;
+      const weeks = [];
+      if (type === 2 || type === 3) {
+        for (let w = 1; w <= (type === 2 ? current : 18); w++) weeks.push({ type: 2, week: w, label: `Week ${w}` });
+      }
+      if (type === 3) for (let w = 1; w <= current; w++) weeks.push({ type: 3, week: w, label: POSTSEASON[w] || `Playoffs, week ${w}` });
+      const lists = await Promise.all(weeks.map(async (wk) => {
+        const data = await getJSON(`${ESPN}/scoreboard?seasontype=${wk.type}&week=${wk.week}&dates=${year}`);
+        return { ...wk, games: (data.events || []).map(normalize).filter((g) => g.state === 'post') };
+      }));
+      const played = lists.filter((w) => w.games.length);
+      const all = played.flatMap((w) => w.games);
+      const start = all.length ? new Date(Math.min(...all.map((g) => g.kickoff))) : null;
+      return { year, weeks: played, start };
+    })();
+    promise.catch(() => { seasonCache = null; });
+    seasonCache = { at: Date.now(), promise };
+    return promise;
+  }
+
   // ---------- Stadium locations ----------
 
   let geoCache = {};
@@ -225,6 +257,28 @@ const Football = (() => {
     const promise = meteoJSON(url, FORECAST_TTL_MS).then((d) => d.hourly);
     promise.catch(() => forecastCache.delete(key));
     forecastCache.set(key, { at: Date.now(), promise });
+    return promise;
+  }
+
+  // Recorded weather at a stadium from `from` through today, for past games: one request per stadium
+  // covers all its games this season. Open-Meteo's historical-forecast archive has no lag (the
+  // reanalysis archive runs about 5 days behind) and no rain chance, since it's what happened.
+  const HISTORY = 'https://historical-forecast-api.open-meteo.com/v1/forecast';
+  const HISTORY_TTL_MS = 6 * 60 * 60 * 1000;
+  const HISTORY_CACHE = 'gameday-forecasts-history-v1';   // its own cache, so Refresh (which clears forecasts) keeps it
+  const historyCache = new Map();
+
+  function pastHourly(loc, from) {
+    const start = from.toISOString().slice(0, 10);
+    const end = new Date().toISOString().slice(0, 10);
+    const key = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)},${start},${end}`;
+    if (historyCache.has(key)) return historyCache.get(key);
+    const vars = 'temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
+    const url = `${HISTORY}?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${vars}&start_date=${start}&end_date=${end}`
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT';
+    const promise = meteoJSON(url, HISTORY_TTL_MS, HISTORY_CACHE).then((d) => ({ ...d.hourly, precipitation_probability: d.hourly.time.map(() => null) }));
+    promise.catch(() => historyCache.delete(key));
+    historyCache.set(key, promise);
     return promise;
   }
 
@@ -400,7 +454,8 @@ const Football = (() => {
   async function pregamePrice(tokenId, kickoff) {
     const end = Math.floor(kickoff.getTime() / 1000);
     const d = await getJSON(`${PM_CLOB}/prices-history?market=${encodeURIComponent(tokenId)}&startTs=${end - 2 * 86400}&endTs=${end}&fidelity=60`);
-    const hist = (d && d.history) || [];
+    // The API can include points after endTs (the settled price), so keep only those before kickoff.
+    const hist = ((d && d.history) || []).filter((pt) => pt.t <= end);
     return hist.length ? Number(hist[hist.length - 1].p) : null;
   }
 
@@ -488,6 +543,7 @@ const Football = (() => {
   // render downloads fresh forecasts, odds and market prices. Stadium locations are kept; they don't change.
   async function clearCaches() {
     forecastCache.clear();
+    seasonCache = null;
     oddsCache.clear();
     marketCache.clear();
     if ('caches' in self) await caches.delete(METEO_CACHE).catch(() => {});
@@ -499,5 +555,5 @@ const Football = (() => {
     oddsCache.clear();
   }
 
-  return { clearCaches, clearOdds, teams, teamSchedule, thisWeek, locate, hourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
+  return { clearCaches, clearOdds, teams, teamSchedule, thisWeek, seasonSoFar, locate, hourly, pastHourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
 })();

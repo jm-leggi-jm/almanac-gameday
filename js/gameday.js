@@ -89,7 +89,7 @@
           <span>${esc(g.venue.name)}${place ? ` · ${esc(place)}` : ''}${g.neutral ? ' · neutral site' : ''}</span>
           <span class="roof-badge roof-${g.roof}">${esc(Football.ROOF_LABEL[g.roof])}</span>
         </div>
-        <div class="gd-slot" data-slot="now"><p class="gd-wait">Loading forecast…</p></div>
+        <div class="gd-slot" data-slot="now"><p class="gd-wait">${g.state === 'post' ? 'Loading weather…' : 'Loading forecast…'}</p></div>
         <div class="gd-slot" data-slot="hours"></div>
         <div class="gd-slot" data-slot="impact"></div>
         <div class="gd-slot" data-slot="conf"></div>
@@ -358,6 +358,93 @@
       fillOdds(card, g);
     });
   }
+
+  // ---------- Past games tab ----------
+
+  // Every game played this season, grouped by week (newest first), with the same card as the Games
+  // tab: the weather recorded during the game window, pre-game odds and the result vs. the line.
+  // No radar, since it only shows the last two hours. Cards fill in as they scroll near the screen,
+  // so opening the tab doesn't fire a request for every game of the season at once.
+  let past = null;                  // { year, weeks, start }
+  let pastAt = 0;
+  let pastGames = [];
+  let pastObserver = null;
+  let pastToken = 0;
+
+  async function renderPast() {
+    const token = ++pastToken;
+    if (!past) $('past-sub').textContent = 'Loading the season so far…';
+    let season;
+    try {
+      season = await Football.seasonSoFar();
+    } catch (err) {
+      if (token === pastToken) $('past-sub').textContent = `Couldn’t load past games (${err.message}).`;
+      return;
+    }
+    if (token !== pastToken) return;
+    past = season;
+    pastAt = Date.now();
+    drawPast();
+  }
+
+  function drawPast() {
+    const pick = $('past-team').value;
+    const indoors = (g) => (g.roof === 'dome' || g.roof === 'canopy' ? 1 : 0);
+    const weeks = past.weeks
+      .map((w) => ({ ...w, games: w.games.filter((g) => !pick || (g.home && g.home.abbr === pick) || (g.away && g.away.abbr === pick)) }))
+      .filter((w) => w.games.length)
+      .reverse();
+    const total = weeks.reduce((n, w) => n + w.games.length, 0);
+    $('past-sub').textContent = `${past.year || ''} season · ${total} game${total === 1 ? '' : 's'} played${pick ? ` by ${pick}` : ''} · updated ${new Date(pastAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    if (pastObserver) pastObserver.disconnect();
+    pastGames = [];
+    if (!weeks.length) {
+      $('past-list').innerHTML = `<p class="empty-note">${past.weeks.length ? 'No games played yet by this team.' : 'No regular-season games have been played yet.'}</p>`;
+      return;
+    }
+    const day = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    $('past-list').innerHTML = weeks.map((w, n) => {
+      const games = [...w.games].sort((a, b) => indoors(a) - indoors(b) || a.kickoff - b.kickoff);
+      const first = new Date(Math.min(...games.map((g) => g.kickoff)));
+      const last = new Date(Math.max(...games.map((g) => g.kickoff)));
+      const span = day(first) === day(last) ? day(first) : `${day(first)} – ${day(last)}`;
+      const cards = games.map((g) => cardShell(g, pastGames.push(g) - 1)).join('');
+      return `
+        <div class="p-group-head${n === 0 ? ' first' : ''}"><h3>${esc(w.label)}</h3><span class="muted small">${games.length} game${games.length === 1 ? '' : 's'} · ${esc(span)}</span></div>
+        <div class="gd-list">${cards}</div>`;
+    }).join('');
+    pastObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        pastObserver.unobserve(e.target);
+        fillPastCard(e.target, pastGames[Number(e.target.dataset.i)]);
+      }
+    }, { rootMargin: '600px 0px' });
+    $('past-list').querySelectorAll('.game').forEach((card) => pastObserver.observe(card));
+  }
+
+  async function fillPastCard(card, g) {
+    fillOdds(card, g);
+    let loc = null;
+    try { loc = await Football.locate(g.venue); } catch { loc = null; }
+    if (!loc) { fill(card, { now: '<p class="gd-wait">Couldn’t find this stadium’s location.</p>' }); return; }
+    try {
+      const h = await Football.pastHourly(loc, past.start);
+      const w = Football.gameWindow(h, g.kickoff);
+      fill(card, w ? weatherBlock(g, w) : { now: '<p class="gd-wait">No weather recorded for this game yet.</p>' });
+    } catch (err) {
+      fill(card, { now: `<p class="gd-wait">Weather unavailable (${esc(err.message)}).</p>` });
+    }
+  }
+
+  Football.teams().then((all) => {
+    $('past-team').insertAdjacentHTML('beforeend', all.map((t) => `<option value="${esc(t.abbr)}">${esc(t.name)}</option>`).join(''));
+  });
+  $('past-team').addEventListener('change', () => { if (past) drawPast(); });
+  // Loads the first time the tab opens, and again if it has been a while.
+  document.addEventListener('tabchange', (e) => {
+    if (e.detail === 'past' && (!past || Date.now() - pastAt > REFRESH_MS)) renderPast();
+  });
 
   // ---------- Team picker ----------
 

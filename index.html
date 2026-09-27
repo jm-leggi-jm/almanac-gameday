@@ -56,6 +56,7 @@
     <nav class="seg tabs" id="tabs" aria-label="Views">
       <button type="button" data-tab="games">Games</button>
       <button type="button" data-tab="parlays">Parlays</button>
+      <button type="button" data-tab="past">Past games</button>
     </nav>
     <button type="button" id="theme-toggle" class="ghost small top-link">Dark mode</button>
   </header>
@@ -81,6 +82,21 @@
         Times are in your computer's time zone.</p>
       <p class="fine">Odds &amp; projections: sportsbook lines via ESPN, ESPN's Matchup Predictor, and Polymarket prices, shown for information only.
         Prices and lines change constantly. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
+    </section>
+
+    <section class="card span-2" id="past-view" aria-labelledby="past-title" hidden>
+      <div class="card-head">
+        <h2 id="past-title">Past games</h2>
+        <div class="gd-controls">
+          <label class="muted small" for="past-team">Team</label>
+          <select id="past-team"><option value="">All teams</option></select>
+        </div>
+      </div>
+      <p id="past-sub" class="muted small gd-sub"></p>
+      <div id="past-list"></div>
+      <p class="fine">Every game played this season from Week 1, newest week first, and within a week open-air games first. Weather is what the
+        models recorded at the stadium during each game's window (kickoff through about three hours later). Odds are the last ones before
+        kickoff, and <i>Result vs. the line</i> shows who covered the spread and whether the total went over. Details load as you scroll.</p>
     </section>
 
     <section class="card span-2" id="parlays-view" aria-labelledby="p-title" hidden>
