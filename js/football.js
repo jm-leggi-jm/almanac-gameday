@@ -56,6 +56,65 @@ const Football = (() => {
     return res.json();
   }
 
+  // ---------- Open-Meteo: gentle on the free API ----------
+
+  // A full week is ~14 stadiums, and firing all their forecast requests at once (again on every
+  // reload) is what drew 429 "too many requests" replies. So Open-Meteo calls go through a small
+  // queue (a few at a time), a 429 is retried after a pause, and forecasts are kept for 30 minutes
+  // in the browser's Cache Storage so reloading the page doesn't download them again.
+  const METEO_CONCURRENCY = 3;
+  const METEO_RETRY_DELAYS_MS = [2000, 4000, 8000];
+  const METEO_CACHE = 'gameday-forecasts-v1';
+  let meteoActive = 0;
+  const meteoWaiting = [];
+
+  async function meteoSlot(job) {
+    if (meteoActive >= METEO_CONCURRENCY) await new Promise((resolve) => meteoWaiting.push(resolve));
+    meteoActive++;
+    try {
+      return await job();
+    } finally {
+      meteoActive--;
+      const next = meteoWaiting.shift();
+      if (next) next();
+    }
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function meteoFetch(url) {
+    for (let attempt = 0; ; attempt++) {
+      const res = await meteoSlot(() => fetch(url));
+      if (res.status === 429 && attempt < METEO_RETRY_DELAYS_MS.length) {
+        const retryAfter = Number(res.headers.get('Retry-After')) * 1000;
+        await sleep(retryAfter > 0 ? retryAfter : METEO_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
+      return res;
+    }
+  }
+
+  // JSON from Open-Meteo, reused for `maxAgeMs` across page loads when Cache Storage is available.
+  async function meteoJSON(url, maxAgeMs = 0) {
+    let cache = null;
+    if (maxAgeMs && 'caches' in self) {
+      try { cache = await caches.open(METEO_CACHE); } catch { cache = null; }
+    }
+    if (cache) {
+      const hit = await cache.match(url);
+      const at = hit && Number(hit.headers.get('x-fetched-at'));
+      if (hit && Date.now() - at < maxAgeMs) return hit.json();
+    }
+    const res = await meteoFetch(url);
+    const body = await res.text();
+    if (cache) {
+      const stamped = new Response(body, { headers: { 'Content-Type': 'application/json', 'x-fetched-at': String(Date.now()) } });
+      cache.put(url, stamped).catch(() => { /* storage full or unavailable: fine */ });
+    }
+    return JSON.parse(body);
+  }
+
   // ---------- Teams and schedules ----------
 
   // The 32 teams, built in: ESPN's team-list endpoint doesn't allow browser (CORS) access, and the
@@ -134,7 +193,7 @@ const Football = (() => {
     if (!venue.city) return null;
     if (!geoPending.has(key)) {
       const stateName = STATES[venue.state] || '';
-      const job = getJSON(`${GEO}?name=${encodeURIComponent(venue.city)}&count=10&language=en&format=json`).then((d) => {
+      const job = meteoJSON(`${GEO}?name=${encodeURIComponent(venue.city)}&count=10&language=en&format=json`).then((d) => {
         const results = d.results || [];
         const pick = (stateName && results.find((r) => r.country_code === 'US' && r.admin1 === stateName))
           || (stateName && results.find((r) => r.country_code === 'US'))
@@ -161,9 +220,9 @@ const Football = (() => {
     if (hit && Date.now() - hit.at < FORECAST_TTL_MS) return hit.promise;
     const vars = 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
     // GMT keeps hour stamps comparable with ESPN's UTC kickoff times.
-    const promise = getJSON(`${FORECAST}?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${vars}&past_days=7&forecast_days=${FORECAST_DAYS}`
-      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT')
-      .then((d) => d.hourly);
+    const url = `${FORECAST}?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${vars}&past_days=7&forecast_days=${FORECAST_DAYS}`
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT';
+    const promise = meteoJSON(url, FORECAST_TTL_MS).then((d) => d.hourly);
     promise.catch(() => forecastCache.delete(key));
     forecastCache.set(key, { at: Date.now(), promise });
     return promise;
@@ -405,5 +464,14 @@ const Football = (() => {
     return { label: 'Very low', note: 'a rough outlook only' };
   }
 
-  return { teams, teamSchedule, thisWeek, locate, hourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
+  // Full refresh: forget every reused answer (in memory and the 30-minute forecast store) so the next
+  // render downloads fresh forecasts, odds and market prices. Stadium locations are kept; they don't change.
+  async function clearCaches() {
+    forecastCache.clear();
+    oddsCache.clear();
+    marketCache.clear();
+    if ('caches' in self) await caches.delete(METEO_CACHE).catch(() => {});
+  }
+
+  return { clearCaches, teams, teamSchedule, thisWeek, locate, hourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
 })();

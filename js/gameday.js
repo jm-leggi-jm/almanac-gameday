@@ -290,15 +290,17 @@
       fill(card, { now: `<p class="gd-wait">Forecast unavailable (${esc(err.message)}).</p>` });
     }
 
-    // Radar for every game: live conditions around the stadium right now (radar only covers the
-    // last two hours, so it can't show a past or future game's weather; the caption says which).
+    // Radar for every outdoor or retractable-roof game: live conditions around the stadium right now
+    // (radar only covers the last two hours, so the caption says what it shows). Under a fixed roof
+    // the weather doesn't reach the field, so dome and covered games get none.
+    if (g.roof === 'dome' || g.roof === 'canopy') return;
     wrap.innerHTML = `<p class="gd-radar-cap">${esc(radarCaption(g))}</p>`;
     card._radar = mountRadar(g, wrap, loc);
     observer.observe(card);   // pauses the loop while the card is off-screen
   }
 
   function radarCaption(g) {
-    const where = g.roof === 'dome' || g.roof === 'canopy' ? 'outside the stadium' : `around ${g.venue.name}`;
+    const where = `around ${g.venue.name}`;
     if (g.state === 'in') return `Live radar ${where}, during the game`;
     if (g.state === 'post') return `Radar ${where} now — the game is over`;
     const hours = (g.kickoff - Date.now()) / 3600000;
@@ -343,7 +345,8 @@
     const indoors = (g) => (g.roof === 'dome' || g.roof === 'canopy' ? 1 : 0);
     const games = result.games.sort((a, b) => indoors(a) - indoors(b) || a.kickoff - b.kickoff);
     const following = prefs.mode === 'mine' && prefs.teams.length ? ` · following ${prefs.teams.join(', ')}` : '';
-    $('gd-sub').textContent = `${result.title}${following} · ${games.length} game${games.length === 1 ? '' : 's'}`;
+    const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    $('gd-sub').textContent = `${result.title}${following} · ${games.length} game${games.length === 1 ? '' : 's'} · updated ${updated}`;
     if (!games.length) {
       $('gd-list').innerHTML = `<p class="empty-note">${prefs.mode === 'mine' ? 'No teams yet. Click <b>Teams…</b> and search for the teams you want to follow.' : 'No games scheduled this week.'}</p>`;
       return;
@@ -430,6 +433,50 @@
     savePrefs();
     render();
   });
+
+  // ---------- Full refresh (limited) ----------
+
+  // Skips the 30-minute reuse of forecasts, odds and prices. Capped at 3 per rolling 30 minutes so a
+  // burst of refreshes can't bring back the rate-limit (429) errors from the free weather API.
+  const REFRESH_KEY = 'almanac-gameday.refreshes';
+  const REFRESH_LIMIT = 3;
+  const REFRESH_WINDOW_MS = 30 * 60 * 1000;
+  let refreshTimer = null;
+
+  function recentRefreshes() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(REFRESH_KEY)) || []; } catch { list = []; }
+    return list.filter((t) => typeof t === 'number' && Date.now() - t < REFRESH_WINDOW_MS);
+  }
+
+  function updateRefreshButton() {
+    const btn = $('gd-refresh');
+    const used = recentRefreshes();
+    const left = REFRESH_LIMIT - used.length;
+    clearTimeout(refreshTimer);
+    if (left > 0) {
+      btn.disabled = false;
+      btn.textContent = `↻ Refresh · ${left} left`;
+      btn.title = `Download fresh forecasts, odds and prices now (${left} of ${REFRESH_LIMIT} left in the next 30 minutes)`;
+    } else {
+      const freeAt = new Date(Math.min(...used) + REFRESH_WINDOW_MS);
+      btn.disabled = true;
+      btn.textContent = `↻ Refresh at ${freeAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      btn.title = `Refresh limit reached (${REFRESH_LIMIT} per 30 minutes). The next one frees up at ${freeAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+    }
+    // Re-check when the oldest use ages out of the window.
+    if (used.length) refreshTimer = setTimeout(updateRefreshButton, Math.min(...used) + REFRESH_WINDOW_MS - Date.now() + 500);
+  }
+
+  $('gd-refresh').addEventListener('click', async () => {
+    const used = recentRefreshes();
+    if (used.length >= REFRESH_LIMIT) { updateRefreshButton(); return; }
+    try { localStorage.setItem(REFRESH_KEY, JSON.stringify([...used, Date.now()])); } catch { /* still refresh */ }
+    updateRefreshButton();
+    await Football.clearCaches();
+    render();
+  });
+  updateRefreshButton();
 
   // The desktop .exe (WebView2) serves files from inside itself, so it skips the offline cache;
   // a cache there would keep serving old files after a rebuild.

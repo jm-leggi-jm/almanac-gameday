@@ -288,9 +288,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Every card is the same 10 rows (header, venue, now, hours, impact, confidence, odds bars, lines,
    result, radar). Cards in the same grid row share those row heights through subgrid, so each
    section starts at the same height across columns even when a card has less in it. */
-/* As many cards across as fit at ~420px or wider: 4 on a full 1920px screen (the page caps at 1900px, so
-   never more than 4), 2 around 1280px, and 1 in a narrow window. */
-.gd-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); column-gap: 16px; row-gap: 16px; }
+/* Up to 4 cards across. A card is at least 300px wide, and never narrower than a quarter of the row
+   (which is what caps it at 4): 4 across from about a 1400px window up, 3 or 2 in between, and
+   1 in a narrow window. */
+.gd-list {
+  display: grid; column-gap: 16px; row-gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, max(300px, (100% - 3 * 16px) / 4)), 1fr));
+}
 .game {
   grid-row: span 10;
   display: grid; grid-template-rows: subgrid; row-gap: 12px;   /* same gap between every row, even empty ones, so rows line up exactly */
@@ -370,3 +374,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 #gd-team-search { margin-top: 12px; }
 .gd-picked { margin: 8px 0 0; }
 .gd-pick[hidden] { display: none; }
+
+/* Narrow cards (4 across on a ~1440px window): tighter odds rows and weather details. Each section
+   of a card is its own size container; the card itself can't be one, because containment would cut it
+   off from the shared rows (subgrid) that keep sections aligned across cards. */
+.game > * { container-type: inline-size; }
+@container (max-width: 380px) {
+  .gd-matchup { font-size: 16px; gap: 8px; }
+  .gd-team img { width: 24px; height: 24px; }
+  .gd-now { flex-direction: column; align-items: stretch; gap: 6px; }
+  .gd-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px 8px; }
+  .gd-facts dd { font-size: 13px; }
+  .gd-hour { font-size: 11px; padding: 4px 2px; }
+  .gd-prob-row { grid-template-columns: 88px minmax(40px, 1fr) 104px; gap: 1px 8px; font-size: 12px; }
+  .gd-prob-vals { font-size: 11.5px; }
+  .gd-lines { grid-template-columns: minmax(0, 1fr); }
+  .gd-radar .radar-map { height: 200px; }
+}
