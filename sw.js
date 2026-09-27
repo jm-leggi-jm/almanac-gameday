@@ -1,5 +1,5 @@
 // Service worker: lets the installed app open without the local server, and shows the last weather seen when offline.
-const SHELL_CACHE = 'gameday-shell-v2';
+const SHELL_CACHE = 'gameday-shell-v3';
 const DATA_CACHE = 'weather-data-v1';
 const SHELL_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
@@ -31,14 +31,16 @@ function dataKey(url) {
 // otherwise from the cache. A stopped localhost server refuses instantly, so there's no wait.
 async function shell(request) {
   const cache = await caches.open(SHELL_CACHE);
-  // Pages are cached under their own path (query string dropped), so the app and the display don't overwrite each other.
+  // Pages are cached under their own path (query string dropped).
   let key = request;
   if (request.mode === 'navigate') {
     const url = new URL(request.url);
     key = url.pathname.endsWith('/') ? 'index.html' : url.origin + url.pathname;
   }
   try {
-    const res = await fetch(request);
+    // no-cache: revalidate with the server so a fresh publish isn't masked by the browser's
+    // 10-minute HTTP cache (which could pair a new page with old scripts).
+    const res = await fetch(request.mode === 'navigate' ? request.url : request, { cache: 'no-cache' });
     if (res.ok) cache.put(key, res.clone());
     return res;
   } catch {
