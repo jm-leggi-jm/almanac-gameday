@@ -5,6 +5,14 @@
 // parlay takes the top N. Informational only.
 (() => {
   const SIZES = [4, 6, 8, 10];
+  const AFTERNOON_SIZES = [2, 3, 4];   // the Sunday 4 PM slate is usually only 3-5 games
+
+  // Sunday's late-afternoon window: kickoffs from 4:00 to 4:59 PM Eastern (the 4:05 and 4:25 games).
+  function isAfternoonWindow(kickoff) {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hour12: false }).formatToParts(kickoff);
+    const get = (type) => (parts.find((p) => p.type === type) || {}).value;
+    return get('weekday') === 'Sun' && Number(get('hour')) === 16;
+  }
   const TAB_KEY = 'almanac-gameday.tab';
   const STAKE = 5;   // payouts are shown for a $5 bet
 
@@ -259,6 +267,7 @@
     $('p-sub').textContent = 'Building parlays…';
     $('p-list-open').innerHTML = '';
     $('p-list-all').innerHTML = '';
+    $('p-list-late').innerHTML = '';
     let week;
     try {
       week = await Football.thisWeek();
@@ -278,6 +287,9 @@
     $('p-count-all').textContent = `${legs.length} eligible games`;
     $('p-list-open').innerHTML = SIZES.map((n) => parlayCard(n, openLegs, 'open-air')).join('');
     $('p-list-all').innerHTML = SIZES.map((n) => parlayCard(n, legs, 'upcoming')).join('');
+    const lateLegs = legs.filter((l) => isAfternoonWindow(l.g.kickoff));
+    $('p-count-late').textContent = `${lateLegs.length} games that haven't kicked off`;
+    $('p-list-late').innerHTML = AFTERNOON_SIZES.map((n) => parlayCard(n, lateLegs, 'afternoon-window')).join('');
   }
 
   // ---------- Tabs ----------
