@@ -428,3 +428,4 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .p-group-head.first { border-top: 0; padding-top: 0; margin-top: 4px; }
 .p-group-head h3 { margin: 0; font-size: 15px; }
 .p-roof { font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 999px; background: var(--neutral); color: var(--text-1); margin-left: 4px; }
+.pp-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }

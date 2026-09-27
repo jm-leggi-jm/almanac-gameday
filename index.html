@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Almanac Game Day</title>
   <!-- Scripts only from this app; data and images only from the schedule, weather, radar and map services it uses. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.rainviewer.com https://services.arcgisonline.com https://a.espncdn.com; connect-src 'self' https://*.open-meteo.com https://api.rainviewer.com https://site.api.espn.com https://gamma-api.polymarket.com https://clob.polymarket.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.rainviewer.com https://services.arcgisonline.com https://a.espncdn.com; connect-src 'self' https://*.open-meteo.com https://api.rainviewer.com https://site.api.espn.com https://site.web.api.espn.com https://sports.core.api.espn.com https://gamma-api.polymarket.com https://clob.polymarket.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="theme-color" content="#2f5d3a">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/favicon-32.png">
@@ -72,6 +72,24 @@
 
       <div class="p-group-head"><h3>All stadiums, including domes and retractable roofs</h3><span id="p-count-all" class="muted small"></span></div>
       <div id="p-list-all" class="p-list"></div>
+
+      <div class="p-group-head"><h3>Player-prop parlays</h3><span class="muted small">3, 4, 5 and 6 legs, player props only</span></div>
+      <div class="p-how">
+        <p>Built from DraftKings' player over/unders via ESPN (passing, rushing and receiving yards, and receptions) for this week's upcoming games, in all stadiums.
+          Each prop takes the side the player's history favors: how often he cleared that line in his last 16 games (this season and last), pulled toward 50% so a
+          small sample can't look like a sure thing. Players need at least 6 games. Only props whose line sits inside the player's normal range count (he cleared it
+          in 20–80% of those games): lines far outside it are alternate lines, or signs the sportsbook knows about a new role or an injury. Tiny lines (under 1.5 receptions,
+          14.5 rushing or receiving yards, 149.5 passing yards) are skipped too. Legs are the likeliest first, with one per player and at most 2 per game.</p>
+        <p>"History says" is how often these legs would all have hit on past form. It tends to <b>overstate</b> the real chance, because the sportsbook sets its lines knowing
+          about injuries, matchups and game plans, and a history-based estimate doesn't.</p>
+        <p><b>* ESPN doesn't publish prop prices,</b> so each leg is assumed to be −110 (the usual price for these lines). The real payout will differ, so check the sportsbook.
+          History doesn't account for injuries, role changes or matchups.</p>
+      </div>
+      <div class="pp-bar">
+        <button type="button" id="pp-build" class="small">Build prop parlays</button>
+        <span id="pp-status" class="muted small">Checks each player's recent games (a few hundred lookups), then reuses the results for 6 hours.</span>
+      </div>
+      <div id="pp-list" class="p-list"></div>
       <p class="fine"><b>For information only, not betting advice.</b> "Our estimate" multiplies each leg's chance, as if games were independent;
         "Priced at" is the chance the combined odds imply, including the sportsbook's margin. Parlays rarely hit, and a longer parlay is far less likely to.
         Lines move constantly. Check the sportsbook before betting. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
@@ -100,5 +118,6 @@
   <script src="js/football.js"></script>
   <script src="js/gameday.js"></script>
   <script src="js/parlay.js"></script>
+  <script src="js/props.js"></script>
 </body>
 </html>
