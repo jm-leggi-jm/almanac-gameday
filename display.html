@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Almanac Game Day Display</title>
+  <!-- Same policy as the main app: scripts only from this site; data and images only from the weather, radar and map services. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.rainviewer.com https://services.arcgisonline.com; connect-src 'self' https://*.open-meteo.com https://api.rainviewer.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <link rel="icon" type="image/png" href="icons/favicon-32.png">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/display.css">
+</head>
+<body class="display">
+  <!-- Wall-display view for DAKboard (Website/iframe block) and similar. Configured entirely by URL:
+       display.html?lat=44.10&lon=-70.21&name=Lewiston&panels=radar,accuracy,actual&theme=auto&lead=1&days=30&zoom=6
+       See README "DAKboard display" for every option. -->
+  <main id="board" class="board"></main>
+  <footer class="board-foot"><span id="d-place"></span><span id="d-status"></span></footer>
+  <div id="tooltip" class="tooltip" hidden></div>
+
+  <script src="js/dates.js"></script>
+  <script src="js/weather.js"></script>
+  <script src="js/scoring.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/radar.js"></script>
+  <script src="js/verify.js"></script>
+  <script src="js/display.js"></script>
+</body>
+</html>

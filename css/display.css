@@ -1,0 +1,74 @@
+/* Wall-display view: fills its frame (e.g. a DAKboard Website/iframe block), text scales with frame size. */
+html:has(body.display) { height: 100%; font-size: clamp(11px, 2.1vmin, 26px); }
+body.display {
+  height: 100%; margin: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+  font-size: 1rem;
+}
+body.display.transparent { background: transparent; }
+body.display.transparent .panel {
+  background: rgba(10, 10, 10, 0.55);
+  border-color: rgba(255, 255, 255, 0.12);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.board {
+  flex: 1; min-height: 0;
+  display: grid; gap: 0.8rem; padding: 0.8rem 0.8rem 0;
+  grid-auto-rows: minmax(0, 1fr);
+}
+.board[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+.board[data-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.board[data-count="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.board[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Three panels led by radar: radar tall on the left, the other two stacked on the right. */
+.board.lead-radar { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.board.lead-radar .panel:first-child { grid-row: span 2; }
+@media (orientation: portrait) {
+  .board[data-count], .board.lead-radar { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .board.lead-radar .panel:first-child { grid-row: auto; }
+}
+
+.panel {
+  min-height: 0; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 0.8rem;
+  padding: 0.8rem 1rem;
+}
+.panel-title { font-size: 1.1rem; margin: 0 0 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-sub { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+.panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.panel-wait { color: var(--muted); margin: auto; }
+
+/* Radar, kiosk mode: map fills the panel, no controls, time + key in one slim row. */
+.radar-kiosk { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.radar-kiosk .radar-map { flex: 1; height: auto; min-height: 0; cursor: default; }
+.radar-kiosk .radar-zoom, .radar-kiosk .radar-play, .radar-kiosk input[type=range] { display: none; }
+.radar-kiosk .radar-bar { margin-top: 0.4rem; order: 2; }
+.radar-kiosk .radar-time { min-width: 0; text-align: left; font-size: 0.85rem; }
+.radar-kiosk .radar-legend { margin-top: 0.3rem; order: 3; font-size: 0.75rem; }
+
+/* Accuracy */
+.acc-caption { margin: 0 0 0.5rem; color: var(--text-2); font-size: 0.85rem; }
+.d-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.7rem; }
+.d-tile { display: flex; flex-direction: column; padding: 0.4rem 0.6rem; border: 1px solid var(--grid); border-radius: 0.5rem; min-width: 0; }
+.d-tile span { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+.d-tile strong { font-size: 1.45rem; }
+.d-leads { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-evenly; }
+.d-lead { display: grid; grid-template-columns: 2.2rem 1fr 3.4rem; align-items: center; gap: 0.6rem; font-size: 0.85rem; }
+.d-lead b { text-align: right; font-variant-numeric: tabular-nums; }
+.d-lead.on span:first-child, .d-lead.on b { color: var(--text-1); font-weight: 700; }
+.d-lead .lead-bar { height: 0.55rem; }
+
+/* Charts fill the rest of the panel */
+.d-legend { font-size: 0.75rem; margin-bottom: 0.2rem; gap: 0.2rem 0.9rem; }
+.d-chart { flex: 1; min-height: 0; }
+.d-chart .tick { font-size: 0.7rem; }
+.d-chart .end-label { font-size: 0.8rem; }
+
+.board-foot {
+  display: flex; justify-content: space-between; gap: 1rem;
+  padding: 0.35rem 1rem 0.45rem; font-size: 0.7rem; color: var(--muted);
+}
+.board-foot .warn { color: var(--bad); }
+body.display.transparent .board-foot { color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); }
