@@ -300,7 +300,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: grid; grid-template-rows: subgrid; row-gap: 12px;   /* same gap between every row, even empty ones, so rows line up exactly */
   border: 1px solid var(--grid); border-radius: 10px; padding: 16px; min-width: 0;
 }
-.game.past { grid-row: span 9; }   /* finished games (Past Games tab) have no radar row */
 .gd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
 .gd-matchup { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; }
 .gd-team { display: inline-flex; align-items: center; gap: 6px; }
@@ -484,3 +483,18 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .sig b { color: var(--text-1); }
 .sig.good { border-left-color: #0ca30c; }
 .sig.bad { border-left-color: #d03b3b; }
+/* Past games: were the predictions right? (chip in the card header, block at the bottom) */
+.pv { border-top: 1px solid var(--grid); padding-top: 10px; }
+.pv-head { margin: 0 0 6px; font-size: 13px; color: var(--text-1); }
+.pv-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; color: #fff; }
+.pv-chip.good { background: #2e8b4e; }
+.pv-chip.bad { background: #c23b3b; }
+.pv-chip.mixed { background: #b7861a; }
+.gd-when .pv-chip { margin-left: 6px; }
+.pv-rows { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 3px; font-size: 12.5px; }
+.pv-rows li { display: flex; gap: 6px; align-items: baseline; }
+.pv-mark { width: 1em; text-align: center; font-weight: 700; }
+.pv-rows .ok .pv-mark { color: #2e9d57; }
+.pv-rows .miss .pv-mark { color: #d03b3b; }
+.pv-rows .push .pv-mark { color: var(--muted); }
+.pv-why ul { margin: 0; padding: 8px 12px 10px 28px; display: grid; gap: 6px; line-height: 1.4; }

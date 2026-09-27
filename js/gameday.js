@@ -94,7 +94,7 @@
         <div class="gd-slot gd-odds" data-slot="probs"><p class="gd-wait">Loading odds…</p></div>
         <div class="gd-slot" data-slot="lines"></div>
         <div class="gd-slot" data-slot="result"></div>
-        ${g.state === 'post' ? '' : '<div class="gd-slot gd-radar-wrap" data-slot="radar"></div>'}
+        ${g.state === 'post' ? '<div class="gd-slot" data-slot="verdict"></div>' : '<div class="gd-slot gd-radar-wrap" data-slot="radar"></div>'}
       </article>`;
   }
 
@@ -447,17 +447,166 @@
   }
 
   async function fillPastCard(card, g) {
-    fillOdds(card, g);
-    let loc = null;
-    try { loc = await Football.locate(g.venue); } catch { loc = null; }
-    if (!loc) { fill(card, { now: '<p class="gd-wait">Couldn’t find this stadium’s location.</p>' }); return; }
-    try {
-      const h = await Football.pastHourly(loc, past.start);
-      const w = Football.gameWindow(h, g.kickoff);
-      fill(card, w ? weatherBlock(g, w) : { now: '<p class="gd-wait">No weather recorded for this game yet.</p>' });
-    } catch (err) {
-      fill(card, { now: `<p class="gd-wait">Weather unavailable (${esc(err.message)}).</p>` });
+    const oddsJob = Promise.all([Football.odds(g).catch(() => null), Football.market(g).catch(() => null)]);
+    const weatherJob = (async () => {
+      let loc = null;
+      try { loc = await Football.locate(g.venue); } catch { loc = null; }
+      if (!loc) { fill(card, { now: '<p class="gd-wait">Couldn’t find this stadium’s location.</p>' }); return null; }
+      try {
+        const h = await Football.pastHourly(loc, past.start);
+        const w = Football.gameWindow(h, g.kickoff);
+        fill(card, w ? weatherBlock(g, w) : { now: '<p class="gd-wait">No weather recorded for this game yet.</p>' });
+        return w;
+      } catch (err) {
+        fill(card, { now: `<p class="gd-wait">Weather unavailable (${esc(err.message)}).</p>` });
+        return null;
+      }
+    })();
+    const [o, m] = await oddsJob;
+    fill(card, oddsBlock(g, o, m));
+    const w = await weatherJob;
+    const v = verdict(g, o, m, w);
+    if (!v) return;
+    fill(card, { verdict: v.html });
+    card.querySelector('.gd-when').insertAdjacentHTML('beforeend', `<span class="pv-chip ${v.tone}">${esc(v.chip)}</span>`);
+  }
+
+  // ---------- Were the predictions right? ----------
+
+  const pct = (v) => `${Math.round(v)}%`;
+
+  // Each source's pick (the team it gave the better chance) against the winner, plus whether the
+  // spread favorite covered. When something missed, a dropdown lists what in the game data could
+  // explain it: how likely an upset was to begin with, turnovers, yardage, penalties, a blown lead,
+  // weather, line movement and disagreement between sources. These are clues, not proof.
+  function verdict(g, o, m, w) {
+    const hs = Number(g.home && g.home.score);
+    const as = Number(g.away && g.away.score);
+    if (!Number.isFinite(hs) || !Number.isFinite(as)) return null;
+    const winner = hs > as ? 'home' : as > hs ? 'away' : null;   // null: a tie
+    const team = (side) => g[side].abbr;
+    const other = (side) => (side === 'home' ? 'away' : 'home');
+
+    const l = o && o.lines;
+    const implied = l && Football.impliedFromMoneylines(l.mlHome, l.mlAway);
+    const sources = [
+      o && o.win ? { name: 'ESPN', home: o.win.home, away: o.win.away } : null,
+      m ? { name: 'Polymarket', home: m.home, away: m.away } : null,
+      implied ? { name: (l && l.provider) || 'Sportsbook', home: implied.home, away: implied.away } : null,
+    ].filter(Boolean).map((s) => {
+      const pick = s.home >= s.away ? 'home' : 'away';
+      return { ...s, pick, chance: (s[pick] / (s.home + s.away)) * 100, right: pick === winner };
+    });
+    if (!sources.length) return null;
+
+    // The favorite: what most sources picked (ties go to the sportsbook's favorite).
+    const homeVotes = sources.filter((s) => s.pick === 'home').length;
+    const fav = homeVotes * 2 > sources.length ? 'home' : homeVotes * 2 < sources.length ? 'away'
+      : (l && l.homeLine != null ? (l.homeLine <= 0 ? 'home' : 'away') : sources[0].pick);
+    const dog = other(fav);
+    const favChance = sources.reduce((a, s) => a + (s[fav] / (s.home + s.away)) * 100, 0) / sources.length;
+
+    // Spread: did the favorite (by the line) cover?
+    let spread = null;
+    if (l && l.homeLine != null && l.homeLine !== 0) {
+      const lineFav = l.homeLine < 0 ? 'home' : 'away';
+      const need = Math.abs(l.homeLine);
+      const margin = lineFav === 'home' ? hs - as : as - hs;
+      spread = { fav: lineFav, need, margin, right: margin > need, push: margin === need };
     }
+
+    const right = sources.filter((s) => s.right).length;
+    const margin = Math.abs(hs - as);
+    let tone, chip, headline;
+    if (!winner) {
+      tone = 'bad'; chip = '✗ Tie'; headline = `A tie: none of the ${sources.length} sources’ picks won.`;
+    } else if (right === sources.length) {
+      tone = 'good'; chip = '✓ Picks right';
+      headline = `${sources.length === 1 ? 'The pick' : `All ${sources.length} sources`} had ${team(winner)}, and ${team(winner)} won.`;
+    } else if (right === 0) {
+      tone = 'bad'; chip = '✗ Upset';
+      headline = `${sources.length === 1 ? 'The pick was' : `All ${sources.length} sources picked`} ${team(fav)}, but ${team(winner)} won.`;
+    } else {
+      tone = 'mixed'; chip = `◐ ${right} of ${sources.length} right`;
+      headline = `${right} of ${sources.length} sources picked the winner, ${team(winner)}.`;
+    }
+
+    const rows = sources.map((s) => `
+      <li class="${s.right ? 'ok' : 'miss'}"><span class="pv-mark">${s.right ? '✓' : '✗'}</span>
+        <span>${esc(s.name)} picked <b>${esc(team(s.pick))}</b> (${pct(s.chance)})</span></li>`);
+    if (spread) {
+      const mark = spread.push ? '–' : spread.right ? '✓' : '✗';
+      const cls = spread.push ? 'push' : spread.right ? 'ok' : 'miss';
+      const text = spread.push ? `${esc(team(spread.fav))} −${spread.need}: push`
+        : `${esc(team(spread.fav))} −${spread.need} ${spread.right ? 'covered' : 'didn’t cover'} (${spread.margin > 0 ? `won by ${spread.margin}` : spread.margin < 0 ? `lost by ${-spread.margin}` : 'tied'})`;
+      rows.push(`<li class="${cls}"><span class="pv-mark">${mark}</span><span>Spread: ${text}</span></li>`);
+    }
+
+    // Why it may have missed: only when a winner pick or the favorite's spread missed.
+    const missed = right < sources.length || (spread && !spread.right && !spread.push);
+    let why = '';
+    if (missed) {
+      const reasons = [];
+      const upset = winner && winner !== fav;
+      const s = o && o.stats;
+      if (upset) {
+        const inTen = Math.max(1, Math.round((100 - favChance) / 10));
+        reasons.push(`<b>Upsets happen:</b> ${team(fav)} was a ${pct(favChance)} favorite, so ${team(dog)} wins a game like this about ${inTen} time${inTen === 1 ? '' : 's'} in 10.`);
+      } else if (winner && right < sources.length) {
+        const wrong = sources.filter((x) => !x.right);
+        reasons.push(`<b>${wrong.map((x) => esc(x.name)).join(' and ')} missed:</b> ${wrong.map((x) => `${pct(x.chance)} on ${team(x.pick)}`).join(', ')}${wrong.every((x) => x.chance < 60) ? ', close to a coin flip' : ''}.`);
+      }
+      if (spread && !spread.right && !spread.push && winner === spread.fav) {
+        reasons.push(`<b>Won, but not by enough:</b> ${team(spread.fav)} won by ${spread.margin}, short of the ${spread.need}-point spread.`);
+      }
+      if (winner && margin <= 3) reasons.push(`<b>One-score finish:</b> decided by ${margin} point${margin === 1 ? '' : 's'}, where a single play or kick swings the result.`);
+      if (s) {
+        const f = s[fav], d = s[dog];
+        const toDiff = (f.turnovers ?? 0) - (d.turnovers ?? 0);
+        if (toDiff >= 1) reasons.push(`<b>Turnovers:</b> ${team(fav)} gave the ball away ${f.turnovers} time${f.turnovers === 1 ? '' : 's'}, ${team(dog)} ${d.turnovers}. Turnover margin is one of the strongest predictors of who wins a given game, and it’s largely luck week to week.`);
+        if (d.defTDs > 0) reasons.push(`<b>Defensive score:</b> ${team(dog)} scored ${d.defTDs} defensive touchdown${d.defTDs === 1 ? '' : 's'}.`);
+        if (d.yards != null && f.yards != null) {
+          const perPlay = d.perPlay != null && f.perPlay != null && d.perPlay > f.perPlay ? ` (${d.perPlay} vs ${f.perPlay} per play)` : '';
+          if (upset && d.yards > f.yards) reasons.push(`<b>Outplayed:</b> ${team(dog)} out-gained ${team(fav)} ${d.yards}–${f.yards} yards${perPlay}, so this wasn’t a fluke.`);
+          else if (upset && f.yards > d.yards + 50) reasons.push(`<b>Out-gained but lost:</b> ${team(fav)} had more yards (${f.yards}–${d.yards}) but didn’t turn them into points.`);
+        }
+        if (f.penaltyYards - d.penaltyYards >= 40) reasons.push(`<b>Penalties:</b> ${team(fav)} was flagged ${f.penalties} times for ${f.penaltyYards} yards, ${team(dog)} ${d.penalties} for ${d.penaltyYards}.`);
+      }
+      const wr = o && o.wpRange;
+      if (wr && upset) {
+        const favMax = fav === 'home' ? wr.homeMax : 100 - wr.homeMin;
+        const late = fav === 'home' ? wr.maxLate : wr.minLate;
+        if (favMax >= 80) reasons.push(`<b>Blown lead:</b> ${team(fav)}’s chance to win reached ${pct(favMax)}${late ? ' in the second half' : ''} before slipping away.`);
+      }
+      if (w && g.roof !== 'dome' && g.roof !== 'canopy') {
+        const imp = Football.impact(w, g.roof, true);
+        if (imp.level >= 2) reasons.push(`<b>Weather:</b> ${imp.reasons.map(esc).join(', ')}. Rough conditions tend to shrink the gap between teams (fewer big plays, more fumbles and missed kicks, tired players in heat).`);
+      }
+      if (l && l.homeOpen != null && l.homeLine != null) {
+        const favSide = l.homeLine <= 0 ? 'home' : 'away';
+        const open = favSide === 'home' ? -l.homeOpen : l.homeOpen;
+        const close = Math.abs(l.homeLine);
+        if (open - close >= 1.5) reasons.push(`<b>Line moved toward ${team(other(favSide))}:</b> ${team(favSide)} opened −${open} and closed −${close}, so late news or money was already leaning against the favorite.`);
+      }
+      const dissent = sources.filter((x) => x.pick !== fav);
+      if (dissent.length) reasons.push(`<b>Sources disagreed:</b> ${dissent.map((x) => esc(x.name)).join(' and ')} had ${team(dog)}, a sign the game was closer than the favorite’s odds suggested.`);
+      if (reasons.length === 1 && upset) reasons.push('Nothing in the box score stands out, so this looks like ordinary game-to-game variance.');
+      why = `
+        <details class="p-flags pv-why">
+          <summary>Why the prediction may have missed</summary>
+          <ul>${reasons.map((r) => `<li>${r}</li>`).join('')}</ul>
+        </details>`;
+    }
+
+    return {
+      tone, chip,
+      html: `
+        <div class="pv ${tone}">
+          <p class="pv-head"><span class="pv-chip ${tone}">${esc(chip)}</span> ${esc(headline)}</p>
+          <ul class="pv-rows">${rows.join('')}</ul>
+          ${why}
+        </div>`,
+    };
   }
 
   Football.teams().then((all) => {

@@ -358,6 +358,41 @@ const Football = (() => {
 
   const num = (s) => (s == null || s === '' ? null : parseFloat(String(s).replace(/^[ou]/, '')));
 
+  // Team box-score stats for a finished game, keyed 'home' / 'away' (matched by team id).
+  function parseStats(summary, g) {
+    const teams = (summary.boxscore && summary.boxscore.teams) || [];
+    if (!g || !g.home || teams.length < 2) return null;
+    const out = {};
+    for (const t of teams) {
+      const side = String(t.team && t.team.id) === String(g.home.id) ? 'home' : 'away';
+      const stat = (name) => {
+        const s = (t.statistics || []).find((x) => x.name === name);
+        return s ? s.displayValue : null;
+      };
+      const pen = (stat('totalPenaltiesYards') || '').split('-').map(Number);
+      out[side] = {
+        turnovers: num(stat('turnovers')), yards: num(stat('totalYards')), perPlay: num(stat('yardsPerPlay')),
+        penalties: pen[0] || 0, penaltyYards: pen[1] || 0, defTDs: num(stat('defensiveTouchdowns')) || 0,
+      };
+    }
+    return out.home && out.away ? out : null;
+  }
+
+  // Highest and lowest home win chance during the game (after the pre-game point), and whether each
+  // came in the second half (by play order), from ESPN's win-probability chart.
+  function winProbRange(wp) {
+    if (!wp || wp.length < 4) return null;
+    let max = -1, min = 2, maxAt = 0, minAt = 0;
+    for (let i = 1; i < wp.length; i++) {
+      const h = wp[i].homeWinPercentage;
+      if (h == null) continue;
+      if (h > max) { max = h; maxAt = i; }
+      if (h < min) { min = h; minAt = i; }
+    }
+    const half = wp.length / 2;
+    return { homeMax: max * 100, homeMin: min * 100, maxLate: maxAt > half, minLate: minAt > half };
+  }
+
   function parseOdds(summary, g) {
     const p = (summary.pickcenter || [])[0];
     const pred = summary.predictor || {};
@@ -373,7 +408,7 @@ const Football = (() => {
       const home = wp[0].homeWinPercentage * 100;
       win = { home, away: 100 - home - (wp[0].tiePercentage || 0) * 100, pregame: true };
     }
-    const out = { win, lines: null, injuries: parseInjuries(summary) };
+    const out = { win, lines: null, injuries: parseInjuries(summary), stats: parseStats(summary, g), wpRange: winProbRange(wp) };
     if (!p) return out;
     const ps = p.pointSpread || {};
     const ml = p.moneyline || {};
