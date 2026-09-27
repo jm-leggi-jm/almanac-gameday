@@ -774,49 +774,25 @@
     render();
   });
 
-  // ---------- Full refresh (limited) ----------
+  // ---------- Full refresh ----------
 
-  // Skips the 30-minute reuse of forecasts, odds and prices. Capped at 3 per rolling 30 minutes so a
-  // burst of refreshes can't bring back the rate-limit (429) errors from the free weather API.
-  const REFRESH_KEY = 'almanac-gameday.refreshes';
-  const REFRESH_LIMIT = 3;
-  const REFRESH_WINDOW_MS = 30 * 60 * 1000;
-  let refreshTimer = null;
-
-  function recentRefreshes() {
-    let list = [];
-    try { list = JSON.parse(localStorage.getItem(REFRESH_KEY)) || []; } catch { list = []; }
-    return list.filter((t) => typeof t === 'number' && Date.now() - t < REFRESH_WINDOW_MS);
-  }
-
-  function updateRefreshButton() {
-    const btn = $('gd-refresh');
-    const used = recentRefreshes();
-    const left = REFRESH_LIMIT - used.length;
-    clearTimeout(refreshTimer);
-    if (left > 0) {
-      btn.disabled = false;
-      btn.textContent = `↻ Refresh · ${left} left`;
-      btn.title = `Download fresh forecasts, odds and prices now (${left} of ${REFRESH_LIMIT} left in the next 30 minutes)`;
-    } else {
-      const freeAt = new Date(Math.min(...used) + REFRESH_WINDOW_MS);
-      btn.disabled = true;
-      btn.textContent = `↻ Refresh at ${freeAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-      btn.title = `Refresh limit reached (${REFRESH_LIMIT} per 30 minutes). The next one frees up at ${freeAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
-    }
-    // Re-check when the oldest use ages out of the window.
-    if (used.length) refreshTimer = setTimeout(updateRefreshButton, Math.min(...used) + REFRESH_WINDOW_MS - Date.now() + 500);
-  }
+  // Skips the 30-minute reuse of forecasts, odds and prices and downloads everything fresh. No limit;
+  // weather requests still go through the queue (a few at a time, retried after a 429). The button is
+  // only disabled while a refresh is running, so a double-click doesn't start two.
+  try { localStorage.removeItem('almanac-gameday.refreshes'); } catch { /* fine */ }   // from the old 3-per-30-minutes limit
 
   $('gd-refresh').addEventListener('click', async () => {
-    const used = recentRefreshes();
-    if (used.length >= REFRESH_LIMIT) { updateRefreshButton(); return; }
-    try { localStorage.setItem(REFRESH_KEY, JSON.stringify([...used, Date.now()])); } catch { /* still refresh */ }
-    updateRefreshButton();
-    await Football.clearCaches();
-    render();
+    const btn = $('gd-refresh');
+    btn.disabled = true;
+    btn.textContent = '↻ Refreshing…';
+    try {
+      await Football.clearCaches();
+      await render();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↻ Refresh';
+    }
   });
-  updateRefreshButton();
 
   // The desktop .exe (WebView2) serves files from inside itself, so it skips the offline cache;
   // a cache there would keep serving old files after a rebuild.
