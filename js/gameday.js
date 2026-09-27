@@ -572,6 +572,26 @@
     navigator.serviceWorker.register('sw.js').catch(() => { /* works without offline support */ });
   }
 
+  // The banner's field is scaled to cover the header, so where its goal lines land depends on the window
+  // size. Measure them and pad the header so the title starts just inside the left goal line and the
+  // menu's right edge sits on the right one.
+  const TITLE_INSET = 14;   // px between the left goal line and the title
+  const banner = document.querySelector('.top.banner');
+  const goalLeft = document.querySelector('.banner-field .goal-left');
+  const goalRight = document.querySelector('.banner-field .goal-right');
+  function alignBanner() {
+    const b = banner.getBoundingClientRect();
+    const left = goalLeft.getBoundingClientRect().right - b.left + TITLE_INSET;
+    const right = b.right - goalRight.getBoundingClientRect().right;
+    banner.style.paddingLeft = `${Math.max(16, Math.round(left))}px`;
+    banner.style.paddingRight = `${Math.max(16, Math.round(right))}px`;
+  }
+  if (banner && goalLeft && goalRight) {
+    alignBanner();
+    if ('ResizeObserver' in window) new ResizeObserver(alignBanner).observe(banner);
+    else addEventListener('resize', alignBanner);
+  }
+
   observer = makeObserver();
   render();
   setInterval(() => { if (!document.hidden) render(); }, REFRESH_MS);
