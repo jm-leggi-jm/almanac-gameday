@@ -327,10 +327,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .gd-conf { margin: 0; font-size: 12px; color: var(--muted); }
 .gd-radar .radar-map { height: 230px; }
 .gd-radar-wrap:empty { display: none; }
-.gd-show-radar { align-self: flex-start; }
+.gd-radar-cap { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
 .gd-dialog { width: min(760px, calc(100vw - 32px)); }
 .gd-team-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; max-height: 60vh; overflow: auto; margin: 10px 0; }
 .gd-pick { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 4px; border-radius: 5px; cursor: pointer; }
 .gd-pick:hover { background: var(--neutral); }
 .gd-pick input { width: auto; }
 .gd-pick img { width: 22px; height: 22px; object-fit: contain; }
+/* Fixed radar (game cards): no zoom controls; the map doesn't react to wheel or drag, so scrolling passes through. */
+.radar-fixed .radar-zoom { display: none; }
+.radar-fixed .radar-map { cursor: default; }

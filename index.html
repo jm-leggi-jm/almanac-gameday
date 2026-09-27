@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Almanac Game Day</title>
-  <!-- Scripts only from this app; data and images only from the weather, radar and map services it uses. -->
+  <!-- Scripts only from this app; data and images only from the schedule, weather, radar and map services it uses. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.rainviewer.com https://services.arcgisonline.com https://a.espncdn.com; connect-src 'self' https://*.open-meteo.com https://api.rainviewer.com https://site.api.espn.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="theme-color" content="#2f5d3a">
   <link rel="manifest" href="manifest.webmanifest">
@@ -15,86 +15,14 @@
   <header class="top">
     <div class="brand">
       <h1>Almanac Game Day</h1>
-      <p class="tagline">Forecasts that keep score, and the weather at every kickoff.</p>
+      <p class="tagline">The weather at every kickoff.</p>
     </div>
-    <button type="button" id="open-display" class="ghost small top-link">DAKboard display…</button>
-    <form id="loc-form" class="loc" autocomplete="off">
-      <input id="loc-input" type="search" placeholder="Search a town or city…" aria-label="Location">
-      <button type="submit">Set location</button>
-      <ul id="loc-results" class="loc-results" hidden></ul>
-    </form>
   </header>
 
-  <p id="status" class="status" role="status"></p>
-
   <main class="grid">
-    <section class="card span-2" aria-labelledby="fc-title">
-      <div class="card-head">
-        <h2 id="fc-title">Next 16 days vs. normal</h2>
-        <span id="loc-name" class="muted"></span>
-      </div>
-      <div id="fc-legend" class="legend"></div>
-      <div id="fc-chart" class="chart"></div>
-      <p class="fine">Normals are the 10-year average for each calendar day (±3 days) at this spot.</p>
-    </section>
-
-    <section class="card" aria-labelledby="radar-title">
-      <div class="card-head">
-        <h2 id="radar-title">Current radar</h2>
-        <span class="muted small">Last 2 hours</span>
-      </div>
-      <div id="radar"></div>
-    </section>
-
-    <section class="card" aria-labelledby="lead-title">
-      <div class="card-head">
-        <h2 id="lead-title">Accuracy by lead time</h2>
-        <span id="lead-range" class="muted small"></span>
-      </div>
-      <div id="lead-table"></div>
-      <p class="fine">Average miss on daily highs and lows, by how many days ahead the forecast was made. Click a row to chart it.</p>
-    </section>
-
-    <section class="card span-2" aria-labelledby="va-title">
-      <div class="card-head">
-        <h2 id="va-title">Forecast vs. actual</h2>
-        <div class="va-controls">
-          <label class="muted small">Forecast made
-            <select id="va-lead" aria-label="Days ahead the forecast was made"></select>
-          </label>
-          <div class="seg" id="va-range" role="group" aria-label="Time range">
-            <button type="button" data-days="30">30 days</button>
-            <button type="button" data-days="90">90 days</button>
-            <button type="button" data-days="all">6 months</button>
-          </div>
-        </div>
-      </div>
-      <div id="va-tiles" class="tiles"></div>
-      <div id="va-legend" class="legend"></div>
-      <div id="va-chart" class="chart"></div>
-      <h3 class="sub-head">Month by month</h3>
-      <div id="va-months" class="table-wrap"></div>
-      <p class="fine">Forecasts are the archived model runs Open-Meteo issued before each day; “actual” is observed weather. A day counts as rainy at 0.04″ or more.</p>
-    </section>
-
-    <section class="card span-2" aria-labelledby="ledger-title">
-      <div class="card-head">
-        <h2 id="ledger-title">Ledger</h2>
-        <div class="head-actions">
-          <button type="button" id="log-model" class="ghost small" title="Snapshot the model's current call for days 1–7 and 8–14 so it gets scored later">Log model's call</button>
-          <button type="button" id="export" class="ghost small">Export</button>
-          <button type="button" id="import" class="ghost small">Import</button>
-          <input type="file" id="import-file" accept=".json,application/json" hidden>
-          <button type="button" id="load-example" class="ghost small">Load example entries</button>
-          <button type="button" id="clear-all" class="ghost small danger">Clear ledger</button>
-        </div>
-      </div>
-      <div id="ledger" class="table-wrap"></div>
-    </section>
-
     <section class="card span-2" id="gameday" aria-labelledby="gd-title">
       <div class="card-head">
-        <h2 id="gd-title">Game day weather <span class="muted small">NFL</span></h2>
+        <h2 id="gd-title">NFL games</h2>
         <div class="gd-controls">
           <div class="seg" id="gd-mode" role="group" aria-label="Which games">
             <button type="button" data-mode="mine">My teams</button>
@@ -106,19 +34,17 @@
       <p id="gd-sub" class="muted small gd-sub"></p>
       <div id="gd-list" class="gd-list"></div>
       <p class="fine">Forecasts cover each game's window: kickoff through about three hours later, at the stadium.
-        Roof types: <b>Dome</b> and <b>Covered</b> stadiums keep weather off the field (the outside forecast is shown for fans);
-        <b>Retractable</b> roofs are usually decided on game day. Radar shows current conditions around each stadium.
-        Schedules from ESPN; times in your computer's time zone.</p>
+        Dome games are listed last: <b>Dome</b> and <b>Covered</b> stadiums keep weather off the field (the outside forecast is shown for fans),
+        and <b>Retractable</b> roofs are usually decided on game day. Each radar shows current conditions around that stadium.
+        Times are in your computer's time zone.</p>
     </section>
   </main>
 
   <footer class="foot">
-    <blockquote id="lore" class="lore"></blockquote>
-    <p class="fine">Observed and forecast data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0).
-      Almanac calls are entered by you; this app isn't affiliated with the Farmers' Almanac.</p>
+    <p class="fine">Schedules: ESPN · Forecasts: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
+      Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Maps © Esri, HERE, Garmin, OpenStreetMap.
+      Not affiliated with the NFL or ESPN.</p>
   </footer>
-
-  <div id="tooltip" class="tooltip" hidden></div>
 
   <dialog id="gd-dialog" class="dialog gd-dialog" aria-labelledby="gd-dialog-title">
     <h2 id="gd-dialog-title">Teams to follow</h2>
@@ -130,64 +56,7 @@
     </div>
   </dialog>
 
-  <dialog id="display-dialog" class="dialog" aria-labelledby="dd-title">
-    <h2 id="dd-title">DAKboard display</h2>
-    <p class="fine">Builds the address for a wall display of <span id="dd-place"></span>. In DAKboard, add a
-      <strong>Website/iframe</strong> block to a Custom Screen and paste this address in.</p>
-    <fieldset class="dd-panels">
-      <legend>Panels</legend>
-      <label><input type="checkbox" value="radar" checked> Radar</label>
-      <label><input type="checkbox" value="forecast"> Next 16 days</label>
-      <label><input type="checkbox" value="accuracy" checked> Forecast accuracy</label>
-      <label><input type="checkbox" value="actual" checked> Forecast vs. actual</label>
-    </fieldset>
-    <div class="dd-grid">
-      <label>Background
-        <select id="dd-theme">
-          <option value="auto">Match system</option>
-          <option value="dark" selected>Dark</option>
-          <option value="light">Light</option>
-          <option value="transparent">See-through (over your DAKboard background)</option>
-        </select>
-      </label>
-      <label>Forecast made
-        <select id="dd-lead"></select>
-      </label>
-      <label>Accuracy period
-        <select id="dd-days">
-          <option value="14">Last 14 days</option>
-          <option value="30" selected>Last 30 days</option>
-          <option value="60">Last 60 days</option>
-          <option value="90">Last 90 days</option>
-        </select>
-      </label>
-      <label>Radar view
-        <select id="dd-zoom">
-          <option value="5">Wide</option>
-          <option value="6" selected>Regional</option>
-          <option value="7">Close</option>
-        </select>
-      </label>
-    </div>
-    <label class="dd-url-label">Address
-      <textarea id="dd-url" rows="3" readonly spellcheck="false"></textarea>
-    </label>
-    <p id="dd-note" class="fine"></p>
-    <div class="dd-actions">
-      <button type="button" id="dd-copy">Copy address</button>
-      <button type="button" id="dd-preview" class="ghost">Preview</button>
-      <button type="button" id="dd-close" class="ghost">Close</button>
-    </div>
-  </dialog>
-
-  <script src="js/config.js"></script>
-  <script src="js/dates.js"></script>
-  <script src="js/weather.js"></script>
-  <script src="js/scoring.js"></script>
-  <script src="js/chart.js"></script>
   <script src="js/radar.js"></script>
-  <script src="js/verify.js"></script>
-  <script src="js/app.js"></script>
   <script src="js/football.js"></script>
   <script src="js/gameday.js"></script>
 </body>

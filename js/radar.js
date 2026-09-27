@@ -221,11 +221,13 @@ const Radar = (() => {
     }
 
     // opts.kiosk: hands-off wall display (no buttons or slider; the loop just plays). opts.zoom: starting zoom.
+    // opts.fixed: the map can't be zoomed or panned (no zoom buttons, mouse wheel scrolls the page).
     function mount(container, opts = {}) {
       if (opts.zoom) zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, opts.zoom));
       container.classList.toggle('radar-kiosk', !!opts.kiosk);
+      container.classList.toggle('radar-fixed', !!opts.fixed);
       container.innerHTML = `
-        <div class="radar-map" tabindex="0" role="img" aria-label="Animated precipitation radar map. Drag or use arrow keys to pan, plus and minus to zoom.">
+        <div class="radar-map" ${opts.fixed ? '' : 'tabindex="0"'} role="img" aria-label="Animated precipitation radar map.${opts.fixed ? '' : ' Drag or use arrow keys to pan, plus and minus to zoom.'}">
           <div class="radar-pane"></div>
           <div class="radar-zoom">
             <button type="button" data-z="1" aria-label="Zoom in">+</button>
@@ -259,7 +261,7 @@ const Radar = (() => {
       });
       playBtn.addEventListener('click', () => setPlaying(!playing));
       slider.addEventListener('input', () => { setPlaying(false); showFrame(Number(slider.value)); });
-      enableDrag();
+      if (!opts.fixed) enableDrag();
 
       let resizeTimer;
       resizeObserver = new ResizeObserver(() => {

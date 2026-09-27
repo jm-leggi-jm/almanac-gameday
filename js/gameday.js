@@ -132,7 +132,7 @@
     holder.className = 'gd-radar';
     wrap.appendChild(holder);
     const r = Radar.create();
-    r.mount(holder, { zoom: 6 });
+    r.mount(holder, { zoom: 6, fixed: true });
     r.setLocation(loc);
     radars.push(r);
     return r;
@@ -161,28 +161,28 @@
       wx.innerHTML = `<p class="gd-wait">Forecast unavailable (${esc(err.message)}).</p>`;
     }
 
-    // Radar: live conditions around the stadium. Domes get it on request only.
-    if (g.state === 'post') return;
-    if (g.roof === 'dome' || g.roof === 'canopy') {
-      wrap.innerHTML = '<button type="button" class="ghost small gd-show-radar">Show outside radar</button>';
-      wrap.querySelector('button').addEventListener('click', (e) => {
-        e.target.remove();
-        const r = mountRadar(g, wrap, loc);
-        observer.observe(card);
-        card._radar = r;
-      }, { once: true });
-      return;
-    }
-    card._pendingRadar = () => { card._radar = mountRadar(g, wrap, loc); };
-    observer.observe(card);
+    // Radar for every game: live conditions around the stadium right now (radar only covers the
+    // last two hours, so it can't show a past or future game's weather; the caption says which).
+    wrap.innerHTML = `<p class="gd-radar-cap">${esc(radarCaption(g))}</p>`;
+    card._radar = mountRadar(g, wrap, loc);
+    observer.observe(card);   // pauses the loop while the card is off-screen
   }
 
-  // Radars are created when their card nears the screen and paused while it's away.
+  function radarCaption(g) {
+    const where = g.roof === 'dome' || g.roof === 'canopy' ? 'outside the stadium' : `around ${g.venue.name}`;
+    if (g.state === 'in') return `Live radar ${where}, during the game`;
+    if (g.state === 'post') return `Radar ${where} now — the game is over`;
+    const hours = (g.kickoff - Date.now()) / 3600000;
+    const until = hours < 1 ? 'kickoff within the hour' : hours < 24 ? `kickoff in ${Math.round(hours)} hours`
+      : `kickoff in ${Math.round(hours / 24)} days`;
+    return `Radar ${where} now · ${until}`;
+  }
+
+  // Every card gets its radar right away; the observer just pauses a radar's loop while its card is off-screen.
   function makeObserver() {
     return new IntersectionObserver((entries) => {
       for (const e of entries) {
         const card = e.target;
-        if (e.isIntersecting && card._pendingRadar) { const make = card._pendingRadar; card._pendingRadar = null; make(); }
         if (card._radar) card._radar.setActive(e.isIntersecting);
       }
     }, { rootMargin: '300px 0px' });
@@ -210,7 +210,9 @@
     }
     if (token !== loadToken) return;
     teardown();
-    const games = result.games.sort((a, b) => a.kickoff - b.kickoff);
+    // Weather matters least under a roof, so dome and covered games go last; each group by kickoff.
+    const indoors = (g) => (g.roof === 'dome' || g.roof === 'canopy' ? 1 : 0);
+    const games = result.games.sort((a, b) => indoors(a) - indoors(b) || a.kickoff - b.kickoff);
     const following = prefs.mode === 'mine' && prefs.teams.length ? ` · following ${prefs.teams.join(', ')}` : '';
     $('gd-sub').textContent = `${result.title}${following} · ${games.length} game${games.length === 1 ? '' : 's'}`;
     if (!games.length) {
@@ -256,6 +258,13 @@
     savePrefs();
     render();
   });
+
+  // The desktop .exe (WebView2) serves files from inside itself, so it skips the offline cache;
+  // a cache there would keep serving old files after a rebuild.
+  const inDesktopShell = !!(window.chrome && window.chrome.webview);
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !inDesktopShell) {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* works without offline support */ });
+  }
 
   observer = makeObserver();
   render();
