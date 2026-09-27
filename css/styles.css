@@ -461,9 +461,21 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
   background: linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.2) 35%, rgba(0, 0, 0, 0) 60%);
 }
-/* Signal chips under each parlay leg: line movement, source agreement, injuries */
-.p-signals { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 0 22px; }
-.sig { font-size: 11px; line-height: 1.35; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--grid); color: var(--text-2); background: var(--neutral); }
-.sig.good { border-color: #0ca30c; color: var(--text-1); }
-.sig.bad { border-color: #d03b3b; color: var(--text-1); }
-.sig.neutral { border-color: var(--grid); }
+/* Flags dropdown (per parlay card): line movement, source agreement and injuries for every leg */
+.p-flags { border: 1px solid var(--grid); border-radius: 8px; font-size: 12.5px; }
+.p-flags summary { cursor: pointer; padding: 7px 10px; color: var(--text-1); font-weight: 600; list-style-position: inside; }
+.p-flags summary:hover { background: var(--neutral); border-radius: 8px; }
+.p-flags[open] summary { border-bottom: 1px solid var(--grid); border-radius: 8px 8px 0 0; }
+.flag-count { font-weight: 600; }
+.flag-count.bad { color: #d03b3b; }
+.flag-count.good { color: #0ca30c; }
+.flag-count.neutral { color: var(--muted); }
+.flag-group { padding: 8px 10px 4px; }
+.flag-group h5 { margin: 0 0 4px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.flag-group h5.bad { color: #d03b3b; }
+.flag-group h5.good { color: #0ca30c; }
+.flag-group ul { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sig { font-size: 11.5px; line-height: 1.4; padding: 3px 8px; border-radius: 6px; border-left: 3px solid var(--axis); background: var(--neutral); color: var(--text-2); }
+.sig b { color: var(--text-1); }
+.sig.good { border-left-color: #0ca30c; }
+.sig.bad { border-left-color: #d03b3b; }

@@ -204,7 +204,6 @@
         </div>
         <div class="p-why">${esc([l.player.pos, l.player.team].filter(Boolean).join(', '))} · ${esc(l.g.shortName)} ·
           ${l.side === 'Over' ? 'over' : 'under'} in ${l.hits} of his last ${l.n} games (avg ${l.avg.toFixed(1)})</div>
-        ${window.ParlaySignals ? window.ParlaySignals.chips(l.signals) : ''}
       </li>`).join('');
     return `
       <article class="parlay">
@@ -217,6 +216,7 @@
           <div title="How often the parlay must hit for this payout to break even, at the assumed -110 per leg.">
             <dt>Break-even*</dt><dd>${pct(1 / dec)}</dd><span class="p-sub">what this payout needs</span></div>
         </dl>
+        ${window.ParlaySignals ? window.ParlaySignals.dropdown(chosen, (l) => `${l.player.name} ${l.side} ${l.line}`) : ''}
         <p class="p-verdict warn">⚠ <b>Past games say ${pct(ours)}, well above the ${pct(1 / dec)} needed.</b> That gap is probably not an edge:
           past games don't know about injuries, matchups or role changes that the sportsbook prices in, so the real chance is likely lower.</p>
         <ol class="p-legs">${rows}</ol>

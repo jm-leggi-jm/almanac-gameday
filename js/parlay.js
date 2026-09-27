@@ -184,12 +184,30 @@
 
   // ---------- Rendering ----------
 
-  // Shared with the prop parlays (window.ParlaySignals) so every leg shows signals the same way.
-  function signalChips(signals) {
-    if (!signals || !signals.length) return '';
-    return `<div class="p-signals">${signals.map((s) => `<span class="sig ${s.tone}" title="${esc(s.tip || '')}">${esc(s.text)}</span>`).join('')}</div>`;
+  // One collapsible "Flags" list per card, under the payout details, gathering every leg's signals
+  // grouped into against / supporting / neutral. Shared with the prop parlays (window.ParlaySignals).
+  // `label(leg)` names the leg in each line (e.g. "SF to win").
+  const FLAG_GROUPS = [
+    { tone: 'bad', title: 'Against' },
+    { tone: 'good', title: 'Supporting' },
+    { tone: 'neutral', title: 'Neutral' },
+  ];
+  function flagsDropdown(legs, label) {
+    const all = legs.flatMap((l) => (l.signals || []).map((s) => ({ ...s, leg: label(l) })));
+    if (!all.length) return '';
+    const count = (tone) => all.filter((s) => s.tone === tone).length;
+    const summary = FLAG_GROUPS.filter((g) => count(g.tone))
+      .map((g) => `<span class="flag-count ${g.tone}">${count(g.tone)} ${g.title.toLowerCase()}</span>`).join(' · ');
+    const groups = FLAG_GROUPS.filter((g) => count(g.tone)).map((g) => `
+      <div class="flag-group">
+        <h5 class="${g.tone}">${g.title} (${count(g.tone)})</h5>
+        <ul>${all.filter((s) => s.tone === g.tone).map((s) => `
+          <li class="sig ${s.tone}" title="${esc(s.tip || '')}"><b>${esc(s.leg)}:</b> ${esc(s.text)}</li>`).join('')}
+        </ul>
+      </div>`).join('');
+    return `<details class="p-flags"><summary>Flags: ${summary}</summary>${groups}</details>`;
   }
-  window.ParlaySignals = { chips: signalChips };
+  window.ParlaySignals = { dropdown: flagsDropdown };
 
   // `kind` names the pool in the not-enough message ("open-air" or "upcoming").
   function parlayCard(size, legs, kind) {
@@ -215,7 +233,6 @@
           <span class="p-prob">${pct(l.prob)}</span>
         </div>
         <div class="p-why">${esc(l.kind)}${l.weather ? ' <span class="p-wx">weather</span>' : ''} · ${esc(l.detail)}</div>
-        ${signalChips(l.signals)}
       </li>`).join('');
     return `
       <article class="parlay">
@@ -231,6 +248,7 @@
           <div title="How often the parlay must hit for this payout to break even. It's what the sportsbook's price implies.">
             <dt>Break-even</dt><dd>${pct(priced)}</dd><span class="p-sub">what this payout needs</span></div>
         </dl>
+        ${flagsDropdown(chosen, (l) => (l.kind === 'Total' ? `${l.pick} (${l.g.shortName})` : l.pick))}
         <ol class="p-legs">${rows}</ol>
       </article>`;
   }
