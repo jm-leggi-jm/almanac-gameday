@@ -493,5 +493,11 @@ const Football = (() => {
     if ('caches' in self) await caches.delete(METEO_CACHE).catch(() => {});
   }
 
-  return { clearCaches, teams, teamSchedule, thisWeek, locate, hourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
+  // Just the odds summaries (lines, projections, injury reports), e.g. for a prop refresh;
+  // forecasts and market prices are left alone.
+  function clearOdds() {
+    oddsCache.clear();
+  }
+
+  return { clearCaches, clearOdds, teams, teamSchedule, thisWeek, locate, hourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
 })();

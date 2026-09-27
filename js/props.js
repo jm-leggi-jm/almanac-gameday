@@ -46,12 +46,13 @@
     try { return await job(); } finally { active--; const next = waiting.shift(); if (next) next(); }
   }
 
-  async function cachedJSON(url) {
+  // `fresh` skips the reuse window (a refresh), still saving the new copy for later.
+  async function cachedJSON(url, fresh = false) {
     let cache = null;
     try { cache = 'caches' in self ? await caches.open(CACHE) : null; } catch { cache = null; }
     if (cache) {
       const hit = await cache.match(url);
-      if (hit && Date.now() - Number(hit.headers.get('x-fetched-at')) < TTL_MS) return hit.json();
+      if (!fresh && hit && Date.now() - Number(hit.headers.get('x-fetched-at')) < TTL_MS) return hit.json();
     }
     const res = await slot(() => fetch(url));
     if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
@@ -62,11 +63,11 @@
 
   // ---------- Data ----------
 
-  async function gameProps(g) {
+  async function gameProps(g, fresh = false) {
     const base = `${CORE}/events/${g.id}/competitions/${g.id}/odds/100/propBets?limit=1000`;
-    const first = await cachedJSON(`${base}&page=1`);
+    const first = await cachedJSON(`${base}&page=1`, fresh);
     const pages = [first];
-    for (let p = 2; p <= (first.pageCount || 1); p++) pages.push(await cachedJSON(`${base}&page=${p}`));
+    for (let p = 2; p <= (first.pageCount || 1); p++) pages.push(await cachedJSON(`${base}&page=${p}`, fresh));
     const seen = new Map();
     for (const item of pages.flatMap((x) => x.items || [])) {
       const type = PROP_TYPES[item.type && item.type.name];
@@ -119,12 +120,14 @@
     return { ...prop, n, hits: pickOver ? over : n - over, side: pickOver ? 'Over' : 'Under', prob: pickOver ? pOver : 1 - pOver, avg: values.reduce((a, b) => a + b, 0) / n };
   }
 
-  async function buildLegs(onProgress) {
+  // `fresh`: re-download prop lines and injury reports (player game histories are still reused).
+  async function buildLegs(onProgress, fresh = false) {
     const week = await Football.thisWeek();
     const games = week.games.filter((g) => g.state === 'pre');
     const now = new Date();
     const season = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();   // Jan-Feb games belong to last year's season
-    const props = (await Promise.all(games.map((g) => gameProps(g).catch(() => [])))).flat();
+    if (fresh) Football.clearOdds();   // injury reports come with the odds summaries
+    const props = (await Promise.all(games.map((g) => gameProps(g, fresh).catch(() => [])))).flat();
     // Injury reports (from the game summaries the game cards already load): player id -> status.
     const injuryById = new Map();
     const summaries = await Promise.all(games.map((g) => Football.odds(g).catch(() => null)));
@@ -165,14 +168,15 @@
     return signals;
   }
 
-  // One leg per player, at most MAX_PER_GAME per game, taking the likeliest legs first.
-  function pickLegs(legs, size) {
+  // One leg per player, at most MAX_PER_GAME per game, taking the likeliest legs first and skipping
+  // players in `skip` (those shown in earlier sets, so a refresh brings new picks).
+  function pickLegs(legs, size, skip = new Set()) {
     const players = new Set();
     const perGame = new Map();
     const chosen = [];
     for (const l of legs) {
       if (chosen.length === size) break;
-      if (players.has(l.athleteId) || (perGame.get(l.g.id) || 0) >= MAX_PER_GAME) continue;
+      if (skip.has(l.athleteId) || players.has(l.athleteId) || (perGame.get(l.g.id) || 0) >= MAX_PER_GAME) continue;
       chosen.push(l);
       players.add(l.athleteId);
       perGame.set(l.g.id, (perGame.get(l.g.id) || 0) + 1);
@@ -186,8 +190,8 @@
   const american = (d) => { const a = d >= 2 ? (d - 1) * 100 : -100 / (d - 1); return `${a > 0 ? '+' : MINUS}${Math.round(Math.abs(a)).toLocaleString()}`; };
   const pct = (p) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`;
 
-  function card(size, legs) {
-    const chosen = pickLegs(legs, size);
+  function card(size, legs, skip) {
+    const chosen = pickLegs(legs, size, skip);
     if (chosen.length < size) {
       return `<article class="parlay"><header class="p-head"><h3>${size}-leg prop parlay</h3></header>
         <p class="gd-wait">Not enough props with enough player history this week.</p></article>`;
@@ -223,20 +227,42 @@
       </article>`;
   }
 
+  // Sets of picks: each refresh skips every player shown in the earlier sets, so it builds new
+  // parlays from the next-best props. When there aren't enough unused props left to fill the
+  // largest parlay, it starts over from the top.
+  const MAX_SIZE = Math.max(...SIZES);
+  let setNumber = 0;
+  const shownPlayers = new Set();
+
   let building = false;
   async function build() {
     if (building) return;
     building = true;
+    const refresh = setNumber > 0;
     $('pp-build').disabled = true;
     $('pp-list').innerHTML = '';
     try {
       const result = await buildLegs((done, total) => {
         $('pp-status').textContent = total ? `Checking player histories: ${done} of ${total}…` : 'Loading this week’s props…';
-      });
+      }, refresh);
+      let startedOver = false;
+      if (pickLegs(result.legs, MAX_SIZE, shownPlayers).length < MAX_SIZE && shownPlayers.size) {
+        shownPlayers.clear();
+        setNumber = 0;
+        startedOver = true;
+      }
+      setNumber++;
+      const skipped = shownPlayers.size;
+      const skip = new Set(shownPlayers);
+      $('pp-list').innerHTML = SIZES.map((n) => card(n, result.legs, skip)).join('');
+      pickLegs(result.legs, MAX_SIZE, skip).forEach((l) => shownPlayers.add(l.athleteId));   // smaller parlays are the first legs of this one
+
       const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      $('pp-status').textContent = `${result.props} props from ${result.games} upcoming games · ${result.players} players checked · ${result.legs.length} with enough history · updated ${updated}`;
-      $('pp-list').innerHTML = SIZES.map((n) => card(n, result.legs)).join('');
-      $('pp-build').textContent = '↻ Rebuild prop parlays';
+      const which = startedOver ? `Set 1 again (every eligible player had been shown, so this starts over from the top picks)`
+        : setNumber === 1 ? 'Set 1: the top picks' : `Set ${setNumber}: new picks, skipping the ${skipped} players shown in earlier sets`;
+      $('pp-status').textContent = `${which} · ${result.props} props from ${result.games} upcoming games · ${result.legs.length} with enough history · ${refresh ? 'lines refreshed' : 'updated'} ${updated}`;
+      $('pp-build').textContent = '↻ New prop parlays';
+      $('pp-build').title = 'Re-downloads the prop lines and injury reports, then builds a new set that skips the players already shown.';
     } catch (err) {
       $('pp-status').textContent = `Couldn’t build prop parlays (${err.message}).`;
     } finally {
