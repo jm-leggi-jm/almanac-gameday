@@ -339,9 +339,11 @@
     }
     if (token !== loadToken) return;
     teardown();
-    // Weather matters least under a roof, so dome and covered games go last; each group by kickoff.
+    // Games under way first, then upcoming ones. Within each, weather matters least under a roof,
+    // so dome and covered games go last; then by kickoff.
     const indoors = (g) => (g.roof === 'dome' || g.roof === 'canopy' ? 1 : 0);
-    const games = result.games.sort((a, b) => indoors(a) - indoors(b) || a.kickoff - b.kickoff);
+    const live = (g) => (g.state === 'in' ? 0 : 1);
+    const games = result.games.sort((a, b) => live(a) - live(b) || indoors(a) - indoors(b) || a.kickoff - b.kickoff);
     const following = prefs.mode === 'mine' && prefs.teams.length ? ` · following ${prefs.teams.join(', ')}` : '';
     const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const finals = result.finals ? ` · ${result.finals} final (in Past Games)` : '';
@@ -366,7 +368,8 @@
   // ---------- Moving finished games to Past Games ----------
 
   // While a shown game is under way (or past its kickoff time), check ESPN's scoreboard every few
-  // minutes. When one goes final, redraw so it leaves this tab, and reload Past Games so it's there.
+  // minutes. When one kicks off, redraw so it joins the live games at the top; when one goes final,
+  // redraw so it leaves this tab, and reload Past Games so it's there.
   const LIVE_CHECK_MS = 3 * 60 * 1000;
   let shown = [];
 
@@ -374,12 +377,16 @@
     if (document.hidden || !shown.some((g) => g.state === 'in' || g.kickoff <= Date.now())) return;
     let week;
     try { week = await Football.thisWeek(); } catch { return; }
-    const finished = new Set(week.games.filter((g) => g.state === 'post').map((g) => g.id));
-    if (!shown.some((g) => finished.has(g.id))) return;
-    Football.clearSeason();
-    pastAt = 0;
+    const state = new Map(week.games.map((g) => [g.id, g.state]));
+    const changed = shown.filter((g) => state.has(g.id) && state.get(g.id) !== g.state);
+    if (!changed.length) return;
+    // A kickoff moves the game up with the live ones; a final moves it to Past Games.
+    if (changed.some((g) => state.get(g.id) === 'post')) {
+      Football.clearSeason();
+      pastAt = 0;
+      if (!$('past-view').hidden) renderPast();
+    }
     render();
-    if (!$('past-view').hidden) renderPast();
   }, LIVE_CHECK_MS);
 
   // ---------- Past games tab ----------
