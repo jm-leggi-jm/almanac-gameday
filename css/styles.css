@@ -570,3 +570,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .game.collapsed .gd-date, .game.collapsed .gd-rel { display: none; }
 .game.collapsed .gd-when { font-size: 13px; }
 .game.collapsed .gd-live { font-size: 13px; }
+
+/* Radar folded away when the game's weather risk is low */
+.gd-radar-fold summary .muted { font-weight: 400; }
+.gd-radar-fold-body { padding: 8px 10px 10px; }

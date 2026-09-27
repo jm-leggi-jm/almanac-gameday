@@ -275,9 +275,10 @@
     } catch { loc = null; }
     if (!loc) { fill(card, { now: '<p class="gd-wait">Couldn’t find this stadium’s location.</p>' }); return; }
 
+    let w = null;
     try {
       const h = await Football.hourly(loc);
-      const w = Football.gameWindow(h, g.kickoff);
+      w = Football.gameWindow(h, g.kickoff);
       if (w) {
         fill(card, weatherBlock(g, w));
       } else {
@@ -293,9 +294,25 @@
     // (radar only covers the last two hours, so the caption says what it shows). Under a fixed roof
     // the weather doesn't reach the field, so dome and covered games get none.
     if (g.roof === 'dome' || g.roof === 'canopy') return;
-    wrap.innerHTML = `<p class="gd-radar-cap">${esc(radarCaption(g))}</p>`;
-    card._radar = mountRadar(g, wrap, loc);
-    observer.observe(card);   // pauses the loop while the card is off-screen
+    // When the game-window weather risk is Low, the radar starts folded away (and isn't loaded until
+    // opened). Moderate or High risk, or no forecast yet, shows it straight away.
+    const low = w && Football.impact(w, g.roof, g.state === 'post').level <= 1;
+    const showRadar = (into) => {
+      into.insertAdjacentHTML('beforeend', `<p class="gd-radar-cap">${esc(radarCaption(g))}</p>`);
+      card._radar = mountRadar(g, into, loc);
+      observer.observe(card);   // pauses the loop while the card is off-screen
+    };
+    if (!low) { wrap.innerHTML = ''; showRadar(wrap); return; }
+    wrap.innerHTML = `
+      <details class="p-flags gd-radar-fold">
+        <summary>Show radar <span class="muted">· weather risk is low</span></summary>
+        <div class="gd-radar-fold-body"></div>
+      </details>`;
+    const fold = wrap.querySelector('details');
+    fold.addEventListener('toggle', () => {
+      if (fold.open && !card._radar) showRadar(fold.querySelector('.gd-radar-fold-body'));
+      else if (card._radar) card._radar.setActive(fold.open);
+    });
   }
 
   function radarCaption(g) {
@@ -313,7 +330,7 @@
     return new IntersectionObserver((entries) => {
       for (const e of entries) {
         const card = e.target;
-        if (card._radar) card._radar.setActive(e.isIntersecting);
+        if (card._radar) card._radar.setActive(e.isIntersecting && !card.querySelector('.gd-radar-fold:not([open])'));
       }
     }, { rootMargin: '300px 0px' });
   }
