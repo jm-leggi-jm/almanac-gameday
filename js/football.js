@@ -253,6 +253,13 @@ const Football = (() => {
     let win = winHome != null && winAway != null ? { home: winHome, away: winAway } : null;
     // Match by team id rather than trusting the home/away labels.
     if (win && g && g.home && pred.homeTeam && String(pred.homeTeam.id) === String(g.away && g.away.id)) win = { home: winAway, away: winHome };
+    // ESPN drops the Matchup Predictor once a game starts; the first point of its in-game
+    // win-probability chart is the same pre-game projection.
+    const wp = summary.winprobability || [];
+    if (!win && wp.length && wp[0].homeWinPercentage != null) {
+      const home = wp[0].homeWinPercentage * 100;
+      win = { home, away: 100 - home - (wp[0].tiePercentage || 0) * 100, pregame: true };
+    }
     const out = { win, lines: null };
     if (!p) return out;
     const ps = p.pointSpread || {};
@@ -296,16 +303,29 @@ const Football = (() => {
 
   // ---------- Prediction market (Polymarket) ----------
 
-  // Polymarket lists each NFL game as an event with a predictable slug: nfl-{away}-{home}-{date, US Eastern}.
+  // Polymarket lists each NFL game as an event with a predictable slug: nfl-{away}-{home}-{date}.
+  // The date is the kickoff's UTC date, so night games carry the next day's date; the Eastern date is
+  // tried as a fallback.
   const PM = 'https://gamma-api.polymarket.com';
+  const PM_CLOB = 'https://clob.polymarket.com';
   const PM_ABBR = { LAR: 'la', WSH: 'was' };      // where Polymarket's team codes differ from ESPN's
   const THIN_MARKET_USD = 1000;                   // below this much traded, prices mean little
   const marketCache = new Map();
 
   const pmCode = (abbr) => PM_ABBR[abbr] || abbr.toLowerCase();
+  const utcDate = (d) => d.toISOString().slice(0, 10);
   const easternDate = (d) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
-  function parseMarket(event, g) {
+  // After kickoff a market trades on the live game (and settles to 100/0), so use its last price
+  // before kickoff instead.
+  async function pregamePrice(tokenId, kickoff) {
+    const end = Math.floor(kickoff.getTime() / 1000);
+    const d = await getJSON(`${PM_CLOB}/prices-history?market=${encodeURIComponent(tokenId)}&startTs=${end - 2 * 86400}&endTs=${end}&fidelity=60`);
+    const hist = (d && d.history) || [];
+    return hist.length ? Number(hist[hist.length - 1].p) : null;
+  }
+
+  async function parseMarket(event, g) {
     const markets = event.markets || [];
     const ml = markets.find((m) => m.sportsMarketType === 'moneyline') || markets[0];
     if (!ml) return null;
@@ -326,21 +346,34 @@ const Football = (() => {
       const over = tp[to.indexOf('Over')];
       if (line != null && over != null) total = { line, over: over * 100, volume: Number(totals.volumeNum || 0) };
     }
-    return {
+    const out = {
       url: `https://polymarket.com/event/${event.slug}`,
       closed: !!ml.closed,
       home: prices[hi] * 100, away: prices[ai] * 100,
       volume, thin: volume < THIN_MARKET_USD, total,
     };
+    if (g.state !== 'pre') {
+      const tokens = JSON.parse(ml.clobTokenIds || '[]');
+      const homePre = tokens[hi] ? await pregamePrice(tokens[hi], g.kickoff).catch(() => null) : null;
+      if (homePre == null) return null;
+      Object.assign(out, { home: homePre * 100, away: (1 - homePre) * 100, pregame: true, total: null });
+    }
+    return out;
   }
 
   function market(g) {
     if (!g.home || !g.away || !g.home.abbr || !g.away.abbr) return Promise.resolve(null);
     const hit = marketCache.get(g.id);
     if (hit && Date.now() - hit.at < ODDS_TTL_MS) return hit.promise;
-    const slug = `nfl-${pmCode(g.away.abbr)}-${pmCode(g.home.abbr)}-${easternDate(g.kickoff)}`;
-    const promise = getJSON(`${PM}/events?slug=${encodeURIComponent(slug)}`)
-      .then((events) => (Array.isArray(events) && events[0] ? parseMarket(events[0], g) : null));
+    const base = `nfl-${pmCode(g.away.abbr)}-${pmCode(g.home.abbr)}-`;
+    const slugs = [...new Set([utcDate(g.kickoff), easternDate(g.kickoff)])].map((d) => base + d);
+    const promise = (async () => {
+      for (const slug of slugs) {
+        const events = await getJSON(`${PM}/events?slug=${encodeURIComponent(slug)}`);
+        if (Array.isArray(events) && events[0]) return parseMarket(events[0], g);
+      }
+      return null;   // no market listed yet
+    })();
     promise.catch(() => marketCache.delete(g.id));
     marketCache.set(g.id, { at: Date.now(), promise });
     return promise;

@@ -1,8 +1,8 @@
 // "Game day weather" section: upcoming NFL games for followed teams (or the whole week), each with the
 // forecast for its game window, roof-aware impact, and a radar of the stadium's area.
 (() => {
-  const PREFS_KEY = 'almanac-gameday.prefs.v1';
-  const DEFAULT_PREFS = { mode: 'mine', teams: ['MIN'] };
+  const PREFS_KEY = 'almanac-gameday.prefs.v2';   // v2: new defaults (This week, no teams)
+  const DEFAULT_PREFS = { mode: 'week', teams: [] };
   const UPCOMING_PER_TEAM = 4;
   const RECENT_DAYS = 8;            // also show a followed team's last game if it was this recent
   const REFRESH_MS = 30 * 60 * 1000;
@@ -89,10 +89,21 @@
           <span>${esc(g.venue.name)}${place ? ` · ${esc(place)}` : ''}${g.neutral ? ' · neutral site' : ''}</span>
           <span class="roof-badge roof-${g.roof}">${esc(Football.ROOF_LABEL[g.roof])}</span>
         </div>
-        <div class="gd-weather"><p class="gd-wait">Loading forecast…</p></div>
-        <div class="gd-odds"><p class="gd-wait">Loading odds…</p></div>
-        <div class="gd-radar-wrap"></div>
+        <div class="gd-slot" data-slot="now"><p class="gd-wait">Loading forecast…</p></div>
+        <div class="gd-slot" data-slot="hours"></div>
+        <div class="gd-slot" data-slot="impact"></div>
+        <div class="gd-slot" data-slot="conf"></div>
+        <div class="gd-slot gd-odds" data-slot="probs"><p class="gd-wait">Loading odds…</p></div>
+        <div class="gd-slot" data-slot="lines"></div>
+        <div class="gd-slot" data-slot="result"></div>
+        <div class="gd-slot gd-radar-wrap" data-slot="radar"></div>
       </article>`;
+  }
+
+  // Each card is the same stack of rows (CARD_ROWS in the CSS), and cards side by side share row
+  // heights, so every section lines up across columns. Filling a slot never adds or removes rows.
+  function fill(card, parts) {
+    for (const [name, html] of Object.entries(parts)) card.querySelector(`[data-slot="${name}"]`).innerHTML = html || '';
   }
 
   function hourCell(h) {
@@ -109,23 +120,28 @@
     const indoors = g.roof === 'dome' || g.roof === 'canopy';
     const days = Math.max(0, (g.kickoff - Date.now()) / 86400000);
     const conf = past || g.state === 'in' ? null : Football.confidence(days);
-    return `
-      <div class="gd-now">
-        <div class="gd-big"><strong>${temps}</strong><span>${esc(w.condition)}${indoors ? ' <em>(outside)</em>' : ''}</span></div>
-        <dl class="gd-facts">
-          <div><dt>Feels like</dt><dd>${Math.round(w.feelsMin)}°${Math.round(w.feelsMax) !== Math.round(w.feelsMin) ? `–${Math.round(w.feelsMax)}°` : ''}</dd></div>
-          <div><dt>${past ? 'Precip' : 'Rain chance'}</dt><dd>${past ? `${w.precip.toFixed(2)}″` : `${Math.round(w.popMax)}%`}</dd></div>
-          <div><dt>Wind</dt><dd>${esc(w.windDir)} ${Math.round(w.windMax)} mph</dd></div>
-          <div><dt>Gusts</dt><dd>${Math.round(w.gustMax)} mph</dd></div>
-        </dl>
-      </div>
-      <div class="gd-hours">${w.hours.map(hourCell).join('')}</div>
-      <div class="gd-impact impact-${imp.level}">
-        <span class="gd-impact-label">${IMPACT_ICON[imp.level]} ${past ? 'Weather impact was' : 'Weather impact'}: <b>${imp.label}</b>${g.roof === 'retractable' ? ' <span class="muted">(if the roof is open)</span>' : ''}</span>
-        <span class="gd-reasons">${imp.reasons.map(esc).join(' · ')}</span>
-      </div>
-      ${conf ? `<p class="gd-conf">Forecast confidence: <b>${conf.label}</b> — ${esc(conf.note)}</p>` : ''}
-      ${g.roof === 'retractable' ? '<p class="gd-conf">Retractable roof: the team usually decides on game day, and tends to close it for rain, cold or heat.</p>' : ''}`;
+    return {
+      now: `
+        <div class="gd-now">
+          <div class="gd-big"><strong>${temps}</strong><span>${esc(w.condition)}${indoors ? ' <em>(outside)</em>' : ''}</span></div>
+          <dl class="gd-facts">
+            <div><dt>Feels like</dt><dd>${Math.round(w.feelsMin)}°${Math.round(w.feelsMax) !== Math.round(w.feelsMin) ? `–${Math.round(w.feelsMax)}°` : ''}</dd></div>
+            <div><dt>${past ? 'Precip' : 'Rain chance'}</dt><dd>${past ? `${w.precip.toFixed(2)}″` : `${Math.round(w.popMax)}%`}</dd></div>
+            <div><dt>Wind</dt><dd>${esc(w.windDir)} ${Math.round(w.windMax)} mph</dd></div>
+            <div><dt>Gusts</dt><dd>${Math.round(w.gustMax)} mph</dd></div>
+          </dl>
+        </div>`,
+      hours: `<div class="gd-hours">${w.hours.map(hourCell).join('')}</div>`,
+      impact: `
+        <div class="gd-impact impact-${imp.level}">
+          <span class="gd-impact-label">${IMPACT_ICON[imp.level]} ${past ? 'Weather impact was' : 'Weather impact'}: <b>${imp.label}</b>${g.roof === 'retractable' ? ' <span class="muted">(if the roof is open)</span>' : ''}</span>
+          <span class="gd-reasons">${imp.reasons.map(esc).join(' · ')}</span>
+        </div>`,
+      conf: [
+        conf ? `<p class="gd-conf">Forecast confidence: <b>${conf.label}</b> — ${esc(conf.note)}</p>` : '',
+        g.roof === 'retractable' ? '<p class="gd-conf">Retractable roof: the team usually decides on game day, and tends to close it for rain, cold or heat.</p>' : '',
+      ].join(''),
+    };
   }
 
   // ---------- Odds & projection ----------
@@ -150,6 +166,17 @@
       </div>`;
   }
 
+  // Same shape as probRow, for a source with nothing to show yet, so every card has the same three rows.
+  function emptyRow(label, text) {
+    return `
+      <div class="gd-prob-row empty">
+        <span class="gd-prob-label">${label}</span>
+        <div class="gd-prob-bar"></div>
+        <span class="gd-prob-vals">${text}</span>
+        <span></span>
+      </div>`;
+  }
+
   function spreadText(g, l) {
     if (l.homeLine == null) return null;
     if (l.homeLine === 0) return 'Pick’em';
@@ -162,16 +189,32 @@
   }
 
   function oddsBlock(g, o, m) {
-    const rows = [];
     const past = g.state === 'post';
-    if (o && o.win) rows.push(probRow(g, 'ESPN projection', o.win.away, o.win.home, ''));
-    if (m && !m.closed) {
-      const note = `${m.thin ? '<span class="gd-thin">thin market</span> · ' : ''}${money(m.volume)} traded · <a href="${esc(m.url)}" target="_blank" rel="noopener">view ↗</a>`;
-      rows.push(probRow(g, 'Polymarket', m.away, m.home, note, m.thin));
+    const started = g.state !== 'pre';
+    const rows = [];
+
+    // ESPN projection (pre-game once the game has started)
+    if (o && o.win) rows.push(probRow(g, 'ESPN projection', o.win.away, o.win.home, o.win.pregame ? 'pre-game' : ''));
+    else rows.push(emptyRow('ESPN projection', 'Not posted yet'));
+
+    // Polymarket (last price before kickoff once the game has started)
+    if (m) {
+      const note = [
+        m.pregame ? 'last price before kickoff' : '',
+        m.thin && !m.pregame ? '<span class="gd-thin">thin market</span>' : '',
+        `${money(m.volume)} traded`,
+        `<a href="${esc(m.url)}" target="_blank" rel="noopener">view ↗</a>`,
+      ].filter(Boolean).join(' · ');
+      rows.push(probRow(g, 'Polymarket', m.away, m.home, note, m.thin && !m.pregame));
+    } else {
+      rows.push(emptyRow('Polymarket', started ? 'No pre-game price' : 'No market yet'));
     }
+
+    // Sportsbook moneyline (the closing line once the game has started)
     const l = o && o.lines;
     const implied = l && Football.impliedFromMoneylines(l.mlHome, l.mlAway);
-    if (implied) rows.push(probRow(g, esc(l.provider), implied.away, implied.home, 'from moneyline, margin removed'));
+    if (implied) rows.push(probRow(g, esc(l.provider), implied.away, implied.home, `${started ? 'closing moneyline' : 'from moneyline'}, margin removed`));
+    else rows.push(emptyRow('Sportsbook', 'Lines not posted yet'));
 
     const facts = [];
     if (l) {
@@ -182,7 +225,7 @@
       }
       if (l.mlHome || l.mlAway) facts.push(`<div><dt>Moneyline</dt><dd>${esc(g.away.abbr)} ${american(l.mlAway)} · ${esc(g.home.abbr)} ${american(l.mlHome)}</dd></div>`);
     }
-    if (m && !m.closed && m.total) {
+    if (m && !m.pregame && m.total) {
       facts.push(`<div><dt>Market total</dt><dd>${Math.round(m.total.over)}% chance of over ${m.total.line}</dd></div>`);
     }
 
@@ -197,21 +240,21 @@
       }
     }
 
-    if (!rows.length && !facts.length) return '<p class="gd-wait">Odds and projections aren’t posted for this game yet.</p>';
-    return `
-      <h3 class="gd-odds-title">${past ? 'Closing odds' : 'Odds & projection'}</h3>
-      ${rows.length ? `<div class="gd-probs">${rows.join('')}</div>` : ''}
-      ${facts.length ? `<dl class="gd-lines">${facts.join('')}</dl>` : ''}
-      ${result}`;
+    return {
+      probs: `
+        <h3 class="gd-odds-title">${started ? 'Pre-game odds & projection' : 'Odds & projection'}</h3>
+        <div class="gd-probs">${rows.join('')}</div>`,
+      lines: facts.length ? `<dl class="gd-lines">${facts.join('')}</dl>` : '',
+      result,
+    };
   }
 
   async function fillOdds(card, g) {
-    const box = card.querySelector('.gd-odds');
     const [o, m] = await Promise.all([
       Football.odds(g).catch(() => null),
-      g.state === 'post' ? Promise.resolve(null) : Football.market(g).catch(() => null),
+      Football.market(g).catch(() => null),
     ]);
-    box.innerHTML = oddsBlock(g, o, m);
+    fill(card, oddsBlock(g, o, m));
   }
 
   function mountRadar(g, wrap, loc) {
@@ -226,26 +269,25 @@
   }
 
   async function fillCard(card, g) {
-    const wx = card.querySelector('.gd-weather');
     const wrap = card.querySelector('.gd-radar-wrap');
     let loc;
     try {
       loc = await Football.locate(g.venue);
     } catch { loc = null; }
-    if (!loc) { wx.innerHTML = '<p class="gd-wait">Couldn’t find this stadium’s location.</p>'; return; }
+    if (!loc) { fill(card, { now: '<p class="gd-wait">Couldn’t find this stadium’s location.</p>' }); return; }
 
     try {
       const h = await Football.hourly(loc);
       const w = Football.gameWindow(h, g.kickoff);
       if (w) {
-        wx.innerHTML = weatherBlock(g, w);
+        fill(card, weatherBlock(g, w));
       } else {
         const opens = new Date(g.kickoff.getTime() - (Football.FORECAST_DAYS - 1) * 86400000);
-        wx.innerHTML = `<p class="gd-wait">Too far out for a forecast. It appears around
-          <b>${opens.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</b>, ${Football.FORECAST_DAYS} days before kickoff.</p>`;
+        fill(card, { now: `<p class="gd-wait">Too far out for a forecast. It appears around
+          <b>${opens.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</b>, ${Football.FORECAST_DAYS} days before kickoff.</p>` });
       }
     } catch (err) {
-      wx.innerHTML = `<p class="gd-wait">Forecast unavailable (${esc(err.message)}).</p>`;
+      fill(card, { now: `<p class="gd-wait">Forecast unavailable (${esc(err.message)}).</p>` });
     }
 
     // Radar for every game: live conditions around the stadium right now (radar only covers the
@@ -303,7 +345,7 @@
     const following = prefs.mode === 'mine' && prefs.teams.length ? ` · following ${prefs.teams.join(', ')}` : '';
     $('gd-sub').textContent = `${result.title}${following} · ${games.length} game${games.length === 1 ? '' : 's'}`;
     if (!games.length) {
-      $('gd-list').innerHTML = `<p class="empty-note">${prefs.mode === 'mine' ? 'Pick teams to follow with <b>Teams…</b>.' : 'No games scheduled this week.'}</p>`;
+      $('gd-list').innerHTML = `<p class="empty-note">${prefs.mode === 'mine' ? 'No teams yet. Click <b>Teams…</b> and search for the teams you want to follow.' : 'No games scheduled this week.'}</p>`;
       return;
     }
     $('gd-list').innerHTML = games.map(cardShell).join('');
@@ -321,17 +363,56 @@
     const list = $('gd-team-list');
     list.innerHTML = '<p class="muted">Loading teams…</p>';
     $('gd-save').disabled = true;   // never save an empty selection just because the list isn't there yet
+    $('gd-team-search').value = '';
     dlg.showModal();
     try {
       const all = await Football.teams();
       list.innerHTML = all.map((t) => `
-        <label class="gd-pick"><input type="checkbox" value="${esc(t.abbr)}" ${prefs.teams.includes(t.abbr) ? 'checked' : ''}>
-          ${t.logo ? `<img src="${esc(t.logo)}" alt="" width="22" height="22" loading="lazy">` : ''}<span>${esc(t.name)}</span></label>`).join('');
+        <label class="gd-pick" data-search="${esc(`${t.name} ${t.abbr}`.toLowerCase())}">
+          <input type="checkbox" value="${esc(t.abbr)}" ${prefs.teams.includes(t.abbr) ? 'checked' : ''}>
+          ${t.logo ? `<img src="${esc(t.logo)}" alt="" width="22" height="22" loading="lazy">` : ''}<span>${esc(t.name)}</span></label>`).join('')
+        + '<p class="muted gd-no-match" hidden>No team matches that search.</p>';
       $('gd-save').disabled = false;
+      updatePicked();
+      $('gd-team-search').focus();
     } catch (err) {
       list.innerHTML = `<p class="muted">Couldn’t load teams (${esc(err.message)}).</p>`;
     }
   }
+
+  // Filters by city, nickname or abbreviation ("vik", "min", "green bay").
+  function filterTeams() {
+    const q = $('gd-team-search').value.trim().toLowerCase();
+    const picks = [...$('gd-team-list').querySelectorAll('.gd-pick')];
+    let shown = 0;
+    for (const p of picks) {
+      const match = !q || p.dataset.search.includes(q);
+      p.hidden = !match;
+      if (match) shown++;
+    }
+    const none = $('gd-team-list').querySelector('.gd-no-match');
+    if (none) none.hidden = shown > 0;
+    return picks.filter((p) => !p.hidden);
+  }
+
+  function updatePicked() {
+    const picked = [...$('gd-team-list').querySelectorAll('input:checked')].map((i) => i.value);
+    $('gd-picked').textContent = picked.length ? `Following: ${picked.join(', ')}` : 'No teams picked yet';
+  }
+
+  $('gd-team-search').addEventListener('input', filterTeams);
+  // Enter with exactly one match toggles that team, so you can type "vik", Enter, then the next team.
+  $('gd-team-search').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const visible = filterTeams();
+    if (visible.length !== 1) return;
+    const box = visible[0].querySelector('input');
+    box.checked = !box.checked;
+    updatePicked();
+    $('gd-team-search').select();
+  });
+  $('gd-team-list').addEventListener('change', updatePicked);
 
   $('gd-teams').addEventListener('click', openPicker);
   $('gd-cancel').addEventListener('click', () => $('gd-dialog').close());

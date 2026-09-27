@@ -90,7 +90,7 @@ h3 { font-size: 14px; }
 /* Header */
 .top {
   display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between;
-  max-width: 1180px; margin: 0 auto; padding: 28px 16px 12px;
+  max-width: 1900px; margin: 0 auto; padding: 28px 16px 12px;
   border-bottom: 1px solid var(--border);
 }
 .tagline { margin: 2px 0 0; color: var(--text-2); font-style: italic; font-family: Georgia, serif; }
@@ -124,12 +124,12 @@ button.icon { background: none; border: 0; color: var(--muted); font-size: 18px;
 button.icon:hover { color: var(--bad); }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.status { max-width: 1180px; margin: 0 auto; padding: 8px 16px 0; min-height: 30px; color: var(--text-2); font-size: 14px; }
+.status { max-width: 1900px; margin: 0 auto; padding: 8px 16px 0; min-height: 30px; color: var(--text-2); font-size: 14px; }
 .status.error { color: var(--bad); }
 
 /* Layout */
 .grid {
-  max-width: 1180px; margin: 0 auto; padding: 8px 16px 24px;
+  max-width: 1900px; margin: 0 auto; padding: 8px 16px 24px;
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
 }
 .span-2 { grid-column: span 2; }
@@ -249,7 +249,7 @@ td { border-bottom: 1px solid var(--grid); padding: 8px; vertical-align: top; }
 .empty-note { color: var(--muted); margin: 0; }
 
 /* Footer */
-.foot { max-width: 1180px; margin: 0 auto; padding: 0 16px 32px; text-align: center; }
+.foot { max-width: 1900px; margin: 0 auto; padding: 0 16px 32px; text-align: center; }
 .lore { margin: 0 auto; max-width: 640px; font-family: Georgia, serif; font-style: italic; color: var(--text-2); font-size: 17px; }
 .lore cite { font-style: normal; font-size: 13px; color: var(--muted); }
 
@@ -285,10 +285,16 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Game day weather */
 .gd-controls { display: flex; align-items: center; gap: 8px; }
 .gd-sub { margin: -4px 0 12px; }
-.gd-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+/* Every card is the same 10 rows (header, venue, now, hours, impact, confidence, odds bars, lines,
+   result, radar). Cards in the same grid row share those row heights through subgrid, so each
+   section starts at the same height across columns even when a card has less in it. */
+/* As many cards across as fit at ~420px or wider: 4 on a full 1920px screen (the page caps at 1900px, so
+   never more than 4), 2 around 1280px, and 1 in a narrow window. */
+.gd-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); column-gap: 16px; row-gap: 16px; }
 .game {
-  border: 1px solid var(--grid); border-radius: 10px; padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  grid-row: span 10;
+  display: grid; grid-template-rows: subgrid; row-gap: 12px;   /* same gap between every row, even empty ones, so rows line up exactly */
+  border: 1px solid var(--grid); border-radius: 10px; padding: 16px; min-width: 0;
 }
 .gd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
 .gd-matchup { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; }
@@ -326,7 +332,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .gd-impact.impact-3 { border-left-color: #d03b3b; }
 .gd-conf { margin: 0; font-size: 12px; color: var(--muted); }
 .gd-radar .radar-map { height: 230px; }
-.gd-radar-wrap:empty { display: none; }
 .gd-radar-cap { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
 .gd-dialog { width: min(760px, calc(100vw - 32px)); }
 .gd-team-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; max-height: 60vh; overflow: auto; margin: 10px 0; }
@@ -339,10 +344,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .radar-fixed .radar-map { cursor: default; }
 
 /* Odds & projection (game cards) */
-.gd-odds { border-top: 1px solid var(--grid); padding-top: 10px; }
+.game > .gd-odds:not(:empty) { border-top: 1px solid var(--grid); padding-top: 12px; }
 .gd-odds-title { font-size: 13px; margin: 0 0 8px; color: var(--text-2); font-weight: 600; }
-.gd-probs { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.gd-prob-row { display: grid; grid-template-columns: 112px minmax(60px, 1fr) auto; grid-template-areas: "label bar vals" ". note note"; align-items: center; gap: 1px 10px; font-size: 12.5px; }
+.gd-probs { display: flex; flex-direction: column; gap: 6px; }
+.gd-prob-row { display: grid; grid-template-columns: 112px minmax(60px, 1fr) 128px; grid-template-areas: "label bar vals" ". note note"; align-items: center; gap: 1px 10px; font-size: 12.5px; }
 .gd-prob-label { grid-area: label; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gd-prob-bar { grid-area: bar; display: flex; gap: 2px; height: 10px; }
 .gd-prob-bar span { height: 100%; }
@@ -357,5 +362,11 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .gd-lines dt { font-size: 11px; color: var(--muted); }
 .gd-lines dd { margin: 0; font-weight: 600; }
 .gd-lines dd .muted { font-weight: 400; }
-.gd-result { margin: 8px 0 0; font-size: 12.5px; }
+.gd-result { margin: 0; font-size: 12.5px; }
 .gd-prob-row.dim .gd-prob-bar, .gd-prob-row.dim .gd-prob-vals { opacity: 0.45; }
+.gd-prob-vals { text-align: right; }
+.gd-prob-row.empty .gd-prob-bar { background: var(--neutral); border-radius: 4px; }
+.gd-prob-row.empty .gd-prob-vals { color: var(--muted); font-size: 12px; }
+#gd-team-search { margin-top: 12px; }
+.gd-picked { margin: 8px 0 0; }
+.gd-pick[hidden] { display: none; }

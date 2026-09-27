@@ -271,6 +271,7 @@ const Radar = (() => {
       resizeObserver.observe(map);
       listen(matchMedia('(prefers-color-scheme: dark)'), 'change', () => { render(); showFrame(current); });
       listen(document, 'visibilitychange', tick);
+      listen(document, 'themechange', () => { render(); showFrame(current); });
       refreshTimer = setInterval(() => { if (!document.hidden && loc && active) loadFrames(); }, REFRESH_MS);
       setPlaying(true);
     }

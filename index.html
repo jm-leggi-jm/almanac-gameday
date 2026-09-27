@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Almanac Game Day</title>
   <!-- Scripts only from this app; data and images only from the schedule, weather, radar and map services it uses. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.rainviewer.com https://services.arcgisonline.com https://a.espncdn.com; connect-src 'self' https://*.open-meteo.com https://api.rainviewer.com https://site.api.espn.com https://gamma-api.polymarket.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.rainviewer.com https://services.arcgisonline.com https://a.espncdn.com; connect-src 'self' https://*.open-meteo.com https://api.rainviewer.com https://site.api.espn.com https://gamma-api.polymarket.com https://clob.polymarket.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="theme-color" content="#2f5d3a">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/favicon-32.png">
   <link rel="stylesheet" href="css/styles.css">
+  <script src="js/theme.js"></script>
 </head>
 <body>
   <header class="top">
@@ -17,6 +18,7 @@
       <h1>Almanac Game Day</h1>
       <p class="tagline">The weather at every kickoff.</p>
     </div>
+    <button type="button" id="theme-toggle" class="ghost small top-link">Dark mode</button>
   </header>
 
   <main class="grid">
@@ -37,7 +39,7 @@
         Dome games are listed last: <b>Dome</b> and <b>Covered</b> stadiums keep weather off the field (the outside forecast is shown for fans),
         and <b>Retractable</b> roofs are usually decided on game day. Each radar shows current conditions around that stadium.
         Times are in your computer's time zone.</p>
-      <p class="fine">Odds         Times are in your computer's time zone.</p>amp; projections: sportsbook lines via ESPN, ESPN's Matchup Predictor, and Polymarket prices, shown for information only.
+      <p class="fine">Odds &amp; projections: sportsbook lines via ESPN, ESPN's Matchup Predictor, and Polymarket prices, shown for information only.
         Prices and lines change constantly. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
     </section>
   </main>
@@ -50,7 +52,9 @@
 
   <dialog id="gd-dialog" class="dialog gd-dialog" aria-labelledby="gd-dialog-title">
     <h2 id="gd-dialog-title">Teams to follow</h2>
-    <p class="fine">"My teams" shows each picked team's next games, plus its last game if it was within the past week.</p>
+    <p class="fine">"My teams" shows each picked team's next games, plus its last game if it was within the past week. Type to search; press Enter to pick the only match.</p>
+    <input id="gd-team-search" type="search" placeholder="Search teams: city, name or abbreviation (e.g. vikings, GB)" aria-label="Search teams" autocomplete="off">
+    <p id="gd-picked" class="muted small gd-picked"></p>
     <div id="gd-team-list" class="gd-team-list"></div>
     <div class="dd-actions">
       <button type="button" id="gd-save">Save</button>
