@@ -446,9 +446,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .banner-field { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
 .banner > :not(.banner-field) { position: relative; z-index: 2; }   /* above the field (0) and its shade (1) */
-.banner h1 { color: #fff; display: flex; align-items: center; gap: 12px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55); }
-.banner .ball { width: 46px; height: 28px; flex: none; transform: rotate(-18deg); filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)); }
-.banner .tagline { color: #eef4ea; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); margin-left: 58px; }
+.banner h1 { color: #fff; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55); }
+.banner .ball { display: block; width: 46px; height: 28px; margin: 0 0 6px 2px; transform: rotate(-18deg); filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)); }   /* sits above the title */
+.banner .tagline { color: #eef4ea; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
 .banner .seg { border-color: rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.25); }
 .banner .seg button { color: #fff; }
 .banner .seg button + button { border-left-color: rgba(255, 255, 255, 0.7); }
