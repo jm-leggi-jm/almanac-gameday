@@ -127,10 +127,6 @@
     const priced = 1 / decimal;
     const money = (v) => `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const pays = STAKE * decimal;
-    const fair = STAKE / ours;   // what the bet would pay if the odds matched our estimate
-    const verdict = ours >= priced
-      ? `<p class="p-verdict good">✓ <b>Pays more than our odds say it should.</b> At ${pct(ours)}, a fair payout would be ${money(fair)}; this pays ${money(pays)}.</p>`
-      : `<p class="p-verdict bad">✗ <b>Pays less than it should.</b> At ${pct(ours)}, a fair payout would be ${money(fair)}; this pays ${money(pays)}. The gap is the sportsbook's margin, added once per leg.</p>`;
     const rows = chosen.map((l) => `
       <li class="p-leg">
         <div class="p-leg-top">
@@ -155,7 +151,6 @@
           <div title="How often the parlay must hit for this payout to break even. It's what the sportsbook's price implies.">
             <dt>Break-even</dt><dd>${pct(priced)}</dd><span class="p-sub">what this payout needs</span></div>
         </dl>
-        ${verdict}
         <ol class="p-legs">${rows}</ol>
       </article>`;
   }
