@@ -560,9 +560,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .gd-collapse:hover { border-color: var(--accent); color: var(--text-1); }
 .gd-strip { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 .gd-strip[hidden] { display: none; }
-.game.collapsed { display: block; grid-row: auto; padding: 8px 12px; flex: 0 1 auto; }
+.game.collapsed { display: block; grid-row: auto; padding: 8px 12px; flex: 0 0 auto; width: max-content; max-width: 100%; }
 .game.collapsed > :not(.gd-head) { display: none; }
-.game.collapsed .gd-head { grid-template-columns: auto auto; gap: 2px 12px; }
+.game.collapsed > .gd-head { container-type: normal; }   /* size from its content, not the card (which here sizes from it) */
+.game.collapsed .gd-head { grid-template-columns: auto auto auto; gap: 12px; }   /* one line: teams & score, clock & quarter, ▸ */
+.game.collapsed .gd-when { grid-column: 2; grid-row: 1; }
+.game.collapsed .gd-collapse { grid-column: 3; grid-row: 1; }
 .game.collapsed .gd-matchup { font-size: 16px; }
 .game.collapsed .gd-date, .game.collapsed .gd-rel { display: none; }
 .game.collapsed .gd-when { font-size: 13px; }
