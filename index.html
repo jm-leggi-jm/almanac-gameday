@@ -18,6 +18,10 @@
       <h1>Almanac Game Day</h1>
       <p class="tagline">The weather at every kickoff.</p>
     </div>
+    <nav class="seg tabs" id="tabs" aria-label="Views">
+      <button type="button" data-tab="games">Games</button>
+      <button type="button" data-tab="parlays">Parlays</button>
+    </nav>
     <button type="button" id="theme-toggle" class="ghost small top-link">Dark mode</button>
   </header>
 
@@ -43,6 +47,29 @@
       <p class="fine">Odds &amp; projections: sportsbook lines via ESPN, ESPN's Matchup Predictor, and Polymarket prices, shown for information only.
         Prices and lines change constantly. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
     </section>
+
+    <section class="card span-2" id="parlays" aria-labelledby="p-title" hidden>
+      <div class="card-head">
+        <h2 id="p-title">Open-air parlays</h2>
+        <button type="button" id="p-rebuild" class="ghost small">↻ Rebuild</button>
+      </div>
+      <p id="p-sub" class="muted small gd-sub"></p>
+      <div class="p-how">
+        <p><b>How these are built.</b> Only this week's games that haven't started, in <b>open-air stadiums</b>
+          (no domes, covered or retractable roofs). Each game adds one leg, a <b>moneyline</b> or an <b>over/under</b>,
+          whichever has the higher estimated chance:</p>
+        <ul>
+          <li><b>Moneyline:</b> the average of ESPN's projection, Polymarket (when it's actually traded) and DraftKings' moneyline with the bookmaker's margin removed.</li>
+          <li><b>Over/under:</b> DraftKings' total with the margin removed, averaged with Polymarket's over/under at the same line. Stadium weather adds a few points to the Under:
+            strong wind +6, breezy +3, heavy rain or snow +5, rain likely +2 (capped at +10). That's a rule of thumb, and legs marked <span class="p-wx">weather</span> were affected.</li>
+          <li>Legs are ranked by estimated chance, and each parlay takes the top 4, 6, 8 or 10. Odds are DraftKings' via ESPN.</li>
+        </ul>
+      </div>
+      <div id="p-list" class="p-list"></div>
+      <p class="fine"><b>For information only, not betting advice.</b> "Our estimate" multiplies each leg's chance, as if games were independent;
+        "Priced at" is the chance the combined odds imply, including the sportsbook's margin. Parlays rarely hit, and a longer parlay is far less likely to.
+        Lines move constantly. Check the sportsbook before betting. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
+    </section>
   </main>
 
   <footer class="foot">
@@ -66,5 +93,6 @@
   <script src="js/radar.js"></script>
   <script src="js/football.js"></script>
   <script src="js/gameday.js"></script>
+  <script src="js/parlay.js"></script>
 </body>
 </html>
