@@ -90,6 +90,7 @@
           <span class="roof-badge roof-${g.roof}">${esc(Football.ROOF_LABEL[g.roof])}</span>
         </div>
         <div class="gd-weather"><p class="gd-wait">Loading forecast…</p></div>
+        <div class="gd-odds"><p class="gd-wait">Loading odds…</p></div>
         <div class="gd-radar-wrap"></div>
       </article>`;
   }
@@ -125,6 +126,92 @@
       </div>
       ${conf ? `<p class="gd-conf">Forecast confidence: <b>${conf.label}</b> — ${esc(conf.note)}</p>` : ''}
       ${g.roof === 'retractable' ? '<p class="gd-conf">Retractable roof: the team usually decides on game day, and tends to close it for rain, cold or heat.</p>' : ''}`;
+  }
+
+  // ---------- Odds & projection ----------
+
+  const MINUS = '−';
+  const signed = (v) => (v > 0 ? `+${v}` : v < 0 ? `${MINUS}${Math.abs(v)}` : '0');
+  const american = (s) => (s ? String(s).replace('-', MINUS) : '—');
+  const money = (v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${Math.round(v)}`);
+
+  // `dim`: shown faded (e.g. a market with almost no money in it).
+  function probRow(g, label, away, home, note, dim = false) {
+    const a = Math.round((away / (away + home)) * 100);
+    const h = 100 - a;   // so the two always add to 100
+    return `
+      <div class="gd-prob-row${dim ? ' dim' : ''}">
+        <span class="gd-prob-label">${label}</span>
+        <div class="gd-prob-bar" role="img" aria-label="${esc(label)}: ${esc(g.away.abbr)} ${a}%, ${esc(g.home.abbr)} ${h}%">
+          <span class="away" style="width:${a}%"></span><span class="home" style="width:${h}%"></span>
+        </div>
+        <span class="gd-prob-vals">${esc(g.away.abbr)} <b>${a}%</b> · ${esc(g.home.abbr)} <b>${h}%</b></span>
+        ${note ? `<span class="gd-prob-note">${note}</span>` : '<span></span>'}
+      </div>`;
+  }
+
+  function spreadText(g, l) {
+    if (l.homeLine == null) return null;
+    if (l.homeLine === 0) return 'Pick’em';
+    const homeFav = l.homeLine < 0;
+    const team = homeFav ? g.home.abbr : g.away.abbr;
+    const line = homeFav ? l.homeLine : -l.homeLine;
+    const open = l.homeOpen == null ? null : homeFav ? l.homeOpen : -l.homeOpen;
+    const odds = homeFav ? l.homeSpreadOdds : l.awaySpreadOdds;
+    return `${esc(team)} ${signed(line)}${odds ? ` (${american(odds)})` : ''}${open != null && open !== line ? ` <span class="muted">opened ${signed(open)}</span>` : ''}`;
+  }
+
+  function oddsBlock(g, o, m) {
+    const rows = [];
+    const past = g.state === 'post';
+    if (o && o.win) rows.push(probRow(g, 'ESPN projection', o.win.away, o.win.home, ''));
+    if (m && !m.closed) {
+      const note = `${m.thin ? '<span class="gd-thin">thin market</span> · ' : ''}${money(m.volume)} traded · <a href="${esc(m.url)}" target="_blank" rel="noopener">view ↗</a>`;
+      rows.push(probRow(g, 'Polymarket', m.away, m.home, note, m.thin));
+    }
+    const l = o && o.lines;
+    const implied = l && Football.impliedFromMoneylines(l.mlHome, l.mlAway);
+    if (implied) rows.push(probRow(g, esc(l.provider), implied.away, implied.home, 'from moneyline, margin removed'));
+
+    const facts = [];
+    if (l) {
+      const spread = spreadText(g, l);
+      if (spread) facts.push(`<div><dt>Spread</dt><dd>${spread}</dd></div>`);
+      if (l.total != null) {
+        facts.push(`<div><dt>Total</dt><dd>${l.total}${l.overOdds ? ` (o ${american(l.overOdds)} / u ${american(l.underOdds)})` : ''}${l.totalOpen != null && l.totalOpen !== l.total ? ` <span class="muted">opened ${l.totalOpen}</span>` : ''}</dd></div>`);
+      }
+      if (l.mlHome || l.mlAway) facts.push(`<div><dt>Moneyline</dt><dd>${esc(g.away.abbr)} ${american(l.mlAway)} · ${esc(g.home.abbr)} ${american(l.mlHome)}</dd></div>`);
+    }
+    if (m && !m.closed && m.total) {
+      facts.push(`<div><dt>Market total</dt><dd>${Math.round(m.total.over)}% chance of over ${m.total.line}</dd></div>`);
+    }
+
+    let result = '';
+    if (past && l) {
+      const r = Football.bettingResult(g, l);
+      if (r) {
+        const parts = [];
+        if (r.ats) parts.push(r.ats.push ? 'Spread: push' : `<b>${esc(r.ats.team)}</b> covered ${signed(r.ats.line)}`);
+        if (r.ou) parts.push(`<b>${r.ou.result}</b> ${r.ou.total} (${r.ou.points} points)`);
+        result = `<p class="gd-result">Result vs. the line: ${parts.join(' · ')}</p>`;
+      }
+    }
+
+    if (!rows.length && !facts.length) return '<p class="gd-wait">Odds and projections aren’t posted for this game yet.</p>';
+    return `
+      <h3 class="gd-odds-title">${past ? 'Closing odds' : 'Odds & projection'}</h3>
+      ${rows.length ? `<div class="gd-probs">${rows.join('')}</div>` : ''}
+      ${facts.length ? `<dl class="gd-lines">${facts.join('')}</dl>` : ''}
+      ${result}`;
+  }
+
+  async function fillOdds(card, g) {
+    const box = card.querySelector('.gd-odds');
+    const [o, m] = await Promise.all([
+      Football.odds(g).catch(() => null),
+      g.state === 'post' ? Promise.resolve(null) : Football.market(g).catch(() => null),
+    ]);
+    box.innerHTML = oddsBlock(g, o, m);
   }
 
   function mountRadar(g, wrap, loc) {
@@ -220,7 +307,11 @@
       return;
     }
     $('gd-list').innerHTML = games.map(cardShell).join('');
-    $('gd-list').querySelectorAll('.game').forEach((card) => fillCard(card, games[Number(card.dataset.i)]));
+    $('gd-list').querySelectorAll('.game').forEach((card) => {
+      const g = games[Number(card.dataset.i)];
+      fillCard(card, g);
+      fillOdds(card, g);
+    });
   }
 
   // ---------- Team picker ----------

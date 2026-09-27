@@ -337,3 +337,25 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Fixed radar (game cards): no zoom controls; the map doesn't react to wheel or drag, so scrolling passes through. */
 .radar-fixed .radar-zoom { display: none; }
 .radar-fixed .radar-map { cursor: default; }
+
+/* Odds & projection (game cards) */
+.gd-odds { border-top: 1px solid var(--grid); padding-top: 10px; }
+.gd-odds-title { font-size: 13px; margin: 0 0 8px; color: var(--text-2); font-weight: 600; }
+.gd-probs { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.gd-prob-row { display: grid; grid-template-columns: 112px minmax(60px, 1fr) auto; grid-template-areas: "label bar vals" ". note note"; align-items: center; gap: 1px 10px; font-size: 12.5px; }
+.gd-prob-label { grid-area: label; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gd-prob-bar { grid-area: bar; display: flex; gap: 2px; height: 10px; }
+.gd-prob-bar span { height: 100%; }
+.gd-prob-bar .away { background: var(--s2); border-radius: 4px 0 0 4px; }
+.gd-prob-bar .home { background: var(--s1); border-radius: 0 4px 4px 0; }
+.gd-prob-vals { grid-area: vals; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.gd-prob-vals b { color: var(--text-1); }
+.gd-prob-note { grid-area: note; font-size: 11.5px; color: var(--muted); }
+.gd-thin { color: var(--text-1); font-weight: 600; }
+.gd-lines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 14px; margin: 0; font-size: 12.5px; }
+.gd-lines div { display: flex; flex-direction: column; }
+.gd-lines dt { font-size: 11px; color: var(--muted); }
+.gd-lines dd { margin: 0; font-weight: 600; }
+.gd-lines dd .muted { font-weight: 400; }
+.gd-result { margin: 8px 0 0; font-size: 12.5px; }
+.gd-prob-row.dim .gd-prob-bar, .gd-prob-row.dim .gd-prob-vals { opacity: 0.45; }

@@ -1,5 +1,5 @@
 // Service worker: lets the installed app open without the local server, and shows the last weather seen when offline.
-const SHELL_CACHE = 'gameday-shell-v1';
+const SHELL_CACHE = 'gameday-shell-v2';
 const DATA_CACHE = 'weather-data-v1';
 const SHELL_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
@@ -65,5 +65,5 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin === self.location.origin) event.respondWith(shell(event.request));
-  else if (url.hostname.endsWith('open-meteo.com') || url.hostname === 'site.api.espn.com') event.respondWith(weather(event.request));
+  else if (url.hostname.endsWith('open-meteo.com') || url.hostname === 'site.api.espn.com' || url.hostname === 'gamma-api.polymarket.com') event.respondWith(weather(event.request));
 });

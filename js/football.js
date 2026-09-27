@@ -86,7 +86,7 @@ const Football = (() => {
   function side(c, started) {
     const t = c.team || {};
     const logo = t.logo || (t.logos && t.logos[0] && t.logos[0].href) || '';
-    return { abbr: t.abbreviation, name: t.displayName, short: t.shortDisplayName || t.displayName, logo, score: started ? scoreOf(c) : null };
+    return { id: t.id, abbr: t.abbreviation, name: t.displayName, short: t.shortDisplayName || t.displayName, logo, score: started ? scoreOf(c) : null };
   }
 
   // ESPN event (schedule or scoreboard shape) -> the fields the app uses
@@ -236,6 +236,134 @@ const Football = (() => {
     return { level, label: ['None', 'Low', 'Moderate', 'High'][level], reasons };
   }
 
+  // ---------- Odds and projection ----------
+
+  // ESPN's game summary carries the sportsbook lines it shows (DraftKings), with opening and current
+  // numbers, plus ESPN's Matchup Predictor win probabilities. One request per game, cached.
+  const ODDS_TTL_MS = 30 * 60 * 1000;
+  const oddsCache = new Map();
+
+  const num = (s) => (s == null || s === '' ? null : parseFloat(String(s).replace(/^[ou]/, '')));
+
+  function parseOdds(summary, g) {
+    const p = (summary.pickcenter || [])[0];
+    const pred = summary.predictor || {};
+    const winHome = num(pred.homeTeam && pred.homeTeam.gameProjection);
+    const winAway = num(pred.awayTeam && pred.awayTeam.gameProjection);
+    let win = winHome != null && winAway != null ? { home: winHome, away: winAway } : null;
+    // Match by team id rather than trusting the home/away labels.
+    if (win && g && g.home && pred.homeTeam && String(pred.homeTeam.id) === String(g.away && g.away.id)) win = { home: winAway, away: winHome };
+    const out = { win, lines: null };
+    if (!p) return out;
+    const ps = p.pointSpread || {};
+    const ml = p.moneyline || {};
+    const tot = p.total || {};
+    const homeLine = num(ps.home && ps.home.close && ps.home.close.line) ?? (p.spread != null ? p.spread : null);
+    out.lines = {
+      provider: (p.provider && (p.provider.displayName || p.provider.name)) || 'Sportsbook',
+      homeLine,                                                   // negative = home favored
+      homeOpen: num(ps.home && ps.home.open && ps.home.open.line),
+      homeSpreadOdds: (ps.home && ps.home.close && ps.home.close.odds) || null,
+      awaySpreadOdds: (ps.away && ps.away.close && ps.away.close.odds) || null,
+      total: p.overUnder ?? num(tot.over && tot.over.close && tot.over.close.line),
+      totalOpen: num(tot.over && tot.over.open && tot.over.open.line),
+      overOdds: (tot.over && tot.over.close && tot.over.close.odds) || null,
+      underOdds: (tot.under && tot.under.close && tot.under.close.odds) || null,
+      mlHome: (ml.home && ml.home.close && ml.home.close.odds) || null,
+      mlAway: (ml.away && ml.away.close && ml.away.close.odds) || null,
+    };
+    return out;
+  }
+
+  function odds(g) {
+    const eventId = g.id;
+    const hit = oddsCache.get(eventId);
+    if (hit && Date.now() - hit.at < ODDS_TTL_MS) return hit.promise;
+    const promise = getJSON(`${ESPN}/summary?event=${encodeURIComponent(eventId)}`).then((s) => parseOdds(s, g));
+    promise.catch(() => oddsCache.delete(eventId));
+    oddsCache.set(eventId, { at: Date.now(), promise });
+    return promise;
+  }
+
+  // Sportsbook moneylines -> win chances with the bookmaker's margin ("vig") removed, so they sum to 100%.
+  function impliedFromMoneylines(mlHome, mlAway) {
+    const p = (ml) => { const n = num(ml); return n == null ? null : n < 0 ? -n / (-n + 100) : 100 / (n + 100); };
+    const h = p(mlHome);
+    const a = p(mlAway);
+    if (h == null || a == null) return null;
+    return { home: (h / (h + a)) * 100, away: (a / (h + a)) * 100 };
+  }
+
+  // ---------- Prediction market (Polymarket) ----------
+
+  // Polymarket lists each NFL game as an event with a predictable slug: nfl-{away}-{home}-{date, US Eastern}.
+  const PM = 'https://gamma-api.polymarket.com';
+  const PM_ABBR = { LAR: 'la', WSH: 'was' };      // where Polymarket's team codes differ from ESPN's
+  const THIN_MARKET_USD = 1000;                   // below this much traded, prices mean little
+  const marketCache = new Map();
+
+  const pmCode = (abbr) => PM_ABBR[abbr] || abbr.toLowerCase();
+  const easternDate = (d) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+  function parseMarket(event, g) {
+    const markets = event.markets || [];
+    const ml = markets.find((m) => m.sportsMarketType === 'moneyline') || markets[0];
+    if (!ml) return null;
+    const outcomes = JSON.parse(ml.outcomes || '[]');
+    const prices = JSON.parse(ml.outcomePrices || '[]').map(Number);
+    const matches = (name, side) => side && [side.short, side.name].some((s) => s && (s.includes(name) || name.includes(s)));
+    let hi = outcomes.findIndex((o) => matches(o, g.home));
+    let ai = outcomes.findIndex((o) => matches(o, g.away));
+    if (hi < 0 || ai < 0) { ai = 0; hi = 1; }       // Polymarket orders away team first
+    const volume = Number(ml.volumeNum ?? ml.volume ?? 0);
+    const totals = markets.filter((m) => m.sportsMarketType === 'totals')
+      .sort((a, b) => Number(b.volumeNum || 0) - Number(a.volumeNum || 0))[0];
+    let total = null;
+    if (totals && Number(totals.volumeNum || 0) >= THIN_MARKET_USD) {   // untraded total markets sit at placeholder lines
+      const line = num((totals.question.match(/O\/U\s*([\d.]+)/) || [])[1]);
+      const tp = JSON.parse(totals.outcomePrices || '[]').map(Number);
+      const to = JSON.parse(totals.outcomes || '[]');
+      const over = tp[to.indexOf('Over')];
+      if (line != null && over != null) total = { line, over: over * 100, volume: Number(totals.volumeNum || 0) };
+    }
+    return {
+      url: `https://polymarket.com/event/${event.slug}`,
+      closed: !!ml.closed,
+      home: prices[hi] * 100, away: prices[ai] * 100,
+      volume, thin: volume < THIN_MARKET_USD, total,
+    };
+  }
+
+  function market(g) {
+    if (!g.home || !g.away || !g.home.abbr || !g.away.abbr) return Promise.resolve(null);
+    const hit = marketCache.get(g.id);
+    if (hit && Date.now() - hit.at < ODDS_TTL_MS) return hit.promise;
+    const slug = `nfl-${pmCode(g.away.abbr)}-${pmCode(g.home.abbr)}-${easternDate(g.kickoff)}`;
+    const promise = getJSON(`${PM}/events?slug=${encodeURIComponent(slug)}`)
+      .then((events) => (Array.isArray(events) && events[0] ? parseMarket(events[0], g) : null));
+    promise.catch(() => marketCache.delete(g.id));
+    marketCache.set(g.id, { at: Date.now(), promise });
+    return promise;
+  }
+
+  // For a finished game: who covered the spread, and whether the total went over or under.
+  function bettingResult(g, lines) {
+    const home = num(g.home && g.home.score);
+    const away = num(g.away && g.away.score);
+    if (home == null || away == null || !lines) return null;
+    const res = {};
+    if (lines.homeLine != null) {
+      const ats = home - away + lines.homeLine;
+      res.ats = ats === 0 ? { push: true } : ats > 0
+        ? { team: g.home.abbr, line: lines.homeLine } : { team: g.away.abbr, line: -lines.homeLine };
+    }
+    if (lines.total != null) {
+      const pts = home + away;
+      res.ou = { points: pts, total: lines.total, result: pts > lines.total ? 'Over' : pts < lines.total ? 'Under' : 'Push' };
+    }
+    return res;
+  }
+
   // How far to trust the forecast, by days until kickoff (see the app's Accuracy by lead time).
   function confidence(daysOut) {
     if (daysOut <= 2) return { label: 'High', note: 'usually within about 2–3°' };
@@ -244,5 +372,5 @@ const Football = (() => {
     return { label: 'Very low', note: 'a rough outlook only' };
   }
 
-  return { teams, teamSchedule, thisWeek, locate, hourly, gameWindow, impact, confidence, ROOF_LABEL, FORECAST_DAYS };
+  return { teams, teamSchedule, thisWeek, locate, hourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
 })();
