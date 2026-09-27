@@ -394,9 +394,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Tabs (header) */
 /* Tabs stacked in a column at the right of the banner, with the light/dark button under them, all the same width. */
-.top-actions { display: flex; flex-direction: column; gap: 8px; margin-left: auto; width: 200px; }
+.top-actions { display: flex; flex-direction: column; gap: 6px; margin-left: auto; width: 200px; align-self: flex-start; margin-top: -14px; }   /* top of the banner, clear of the yard numbers */
 .tabs { flex-direction: column; }
-.tabs button { padding: 7px 12px; text-align: center; }
+.tabs button { padding: 4px 12px; text-align: center; }
 .seg.tabs button + button { border-left: 0; border-top: 1px solid var(--axis); }
 .top-actions .top-link { margin-left: 0; align-self: stretch; }
 
@@ -443,7 +443,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Football-field banner (header) */
 .top.banner {
-  position: relative; overflow: hidden; max-width: none; min-height: 150px;
+  position: relative; overflow: hidden; max-width: none; min-height: 176px;
   padding: 26px max(16px, calc((100% - 1868px) / 2)) 24px;
   align-items: center; border-bottom: 0; margin-bottom: 8px;
   box-shadow: inset 0 -40px 50px -30px rgba(0, 0, 0, 0.35);

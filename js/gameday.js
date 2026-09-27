@@ -578,12 +578,23 @@
   const banner = document.querySelector('.top.banner');
   const goalLeft = document.querySelector('.banner-field .goal-left');
   const goalRight = document.querySelector('.banner-field .goal-right');
+  const yardNums = document.querySelectorAll('.banner-field .yard-nums text');
+  const NUMBERS_ABOVE_BOTTOM = 10;   // px from the banner's bottom edge to the numbers' baseline
+  const NUMBERS_PX = 24;             // yard-number font size on screen
   function alignBanner() {
     const b = banner.getBoundingClientRect();
     const left = goalLeft.getBoundingClientRect().right - b.left + INSET;
     const right = b.right - goalRight.getBoundingClientRect().left + INSET;
     banner.style.paddingLeft = `${Math.max(16, Math.round(left))}px`;
     banner.style.paddingRight = `${Math.max(16, Math.round(right))}px`;
+    // Yard numbers: always just above the banner's bottom edge (below the menu), however the field
+    // is scaled and cropped. The field fills the banner (slice), centered, so work back from pixels.
+    const s = Math.max(b.width / 1200, b.height / 180);
+    const cropTop = (180 * s - b.height) / 2;
+    const y = ((b.height - NUMBERS_ABOVE_BOTTOM + cropTop) / s).toFixed(1);
+    yardNums.forEach((t) => t.setAttribute('y', y));
+    // …and the same on-screen size at every width, so wide windows don't grow them into the menu.
+    if (yardNums[0]) yardNums[0].parentNode.setAttribute('font-size', (NUMBERS_PX / s).toFixed(1));
   }
   if (banner && goalLeft && goalRight) {
     alignBanner();
