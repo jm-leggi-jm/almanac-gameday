@@ -6,7 +6,7 @@
 (() => {
   const SIZES = [4, 6, 8, 10];
   const TAB_KEY = 'almanac-gameday.tab';
-  const STAKE = 10;
+  const STAKE = 5;   // payouts are shown for a $5 bet
 
   // Weather nudges toward the Under (rule of thumb): wind hurts passing and kicking; heavy rain and
   // snow slow games down. Percentage points added to the Under's chance, capped.

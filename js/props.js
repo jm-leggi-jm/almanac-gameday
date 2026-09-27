@@ -17,7 +17,7 @@
   const CONCURRENCY = 6;
   const CACHE = 'gameday-props-v1';
   const TTL_MS = 6 * 60 * 60 * 1000;
-  const STAKE = 10;
+  const STAKE = 5;   // payouts are shown for a $5 bet
 
   // `minLine` drops depth-player lines (e.g. over 0.5 receptions), which are never priced near -110.
   const PROP_TYPES = {
