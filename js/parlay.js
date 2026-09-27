@@ -56,13 +56,78 @@
     if (!sources.length) return null;
     const home = avg(sources.map((s) => s.home));
     const pickHome = home >= 0.5;
+    const pickProbs = sources.map((s) => ({ name: s.name, p: pickHome ? s.home : 1 - s.home }));
     return {
       g, kind: 'Moneyline',
       pick: `${pickHome ? g.home.abbr : g.away.abbr} to win`,
       odds: pickHome ? l.mlHome : l.mlAway,
       prob: pickHome ? home : 1 - home,
-      detail: sources.map((s) => `${s.name} ${Math.round((pickHome ? s.home : 1 - s.home) * 100)}%`).join(' · '),
+      detail: pickProbs.map((s) => `${s.name} ${Math.round(s.p * 100)}%`).join(' · '),
+      signals: [
+        movementSignal(pickHome ? l.mlHomeOpen : l.mlAwayOpen, pickHome ? l.mlHome : l.mlAway),
+        agreementSignal(pickProbs),
+        injurySignal(o.injuries, g, pickHome ? g.home.abbr : g.away.abbr),
+      ].filter(Boolean),
     };
+  }
+
+  // ---------- Signals: line movement, source agreement, injuries ----------
+
+  // A sign on each leg, shown as a chip: 'good' supports the pick, 'bad' works against it.
+  const impliedOf = (american) => { const d = decimalOdds(american); return d ? 1 / d : null; };
+
+  // Moneyline: did the price on our side get shorter (more money on it) or longer since it opened?
+  function movementSignal(openOdds, nowOdds) {
+    const was = impliedOf(openOdds);
+    const now = impliedOf(nowOdds);
+    if (was == null || now == null) return null;
+    const pts = Math.round((now - was) * 100);
+    const move = `${showAmerican(openOdds)} → ${showAmerican(nowOdds)}`;
+    if (Math.abs(pts) < 2) return { tone: 'neutral', text: `• Line steady (${move})`, tip: 'The price has barely moved since the line opened.' };
+    return pts > 0
+      ? { tone: 'good', text: `▲ Line moved toward this pick (${move})`, tip: `Since opening, the price on this side got ${pts} points shorter: money has come in on it.` }
+      : { tone: 'bad', text: `▼ Line moved against this pick (${move})`, tip: `Since opening, the price on this side got ${-pts} points longer: money has gone the other way.` };
+  }
+
+  // Totals: a line that rose means money on the Over; one that fell means money on the Under.
+  function totalMovementSignal(openLine, nowLine, pickOver) {
+    if (openLine == null || nowLine == null) return null;
+    const move = `${openLine} → ${nowLine}`;
+    if (openLine === nowLine) return { tone: 'neutral', text: `• Total steady (${nowLine})`, tip: 'The total hasn’t moved since it opened.' };
+    const toward = (nowLine > openLine) === pickOver;
+    return toward
+      ? { tone: 'good', text: `▲ Total moved toward this pick (${move})`, tip: 'The total has moved in the direction of this bet since it opened.' }
+      : { tone: 'bad', text: `▼ Total moved against this pick (${move})`, tip: 'The total has moved away from this bet since it opened.' };
+  }
+
+  // How far apart the sources are on this leg's chance.
+  function agreementSignal(probs) {
+    if (probs.length < 2) return null;
+    const sorted = [...probs].sort((a, b) => a.p - b.p);
+    const lo = sorted[0];
+    const hi = sorted[sorted.length - 1];
+    const gap = Math.round((hi.p - lo.p) * 100);
+    if (gap <= 5) return { tone: 'good', text: `✓ Sources agree (within ${gap} pts)`, tip: 'ESPN, Polymarket and DraftKings are close on this outcome.' };
+    if (gap <= 12) return { tone: 'neutral', text: `≈ Sources differ by ${gap} pts`, tip: `${hi.name} ${Math.round(hi.p * 100)}% vs ${lo.name} ${Math.round(lo.p * 100)}%.` };
+    return { tone: 'bad', text: `✗ Sources disagree: ${hi.name} ${Math.round(hi.p * 100)}% vs ${lo.name} ${Math.round(lo.p * 100)}%`, tip: 'A wide split means the outcome is less settled than the average suggests.' };
+  }
+
+  // Notable injuries (skill positions and QB) on both teams. For a moneyline, injuries on the
+  // picked team work against it; for a total, both teams matter.
+  const KEY_POS = new Set(['QB', 'RB', 'WR', 'TE', 'K']);
+  const STATUS_SHORT = { Out: 'out', Doubtful: 'doubtful', Questionable: 'questionable', Suspended: 'suspended' };
+  function injurySignal(injuries, g, pickedTeam) {
+    if (!injuries) return null;
+    const list = (abbr) => (injuries[abbr] || []).filter((i) => KEY_POS.has(i.pos));
+    const describe = (abbr) => list(abbr).map((i) => `${i.name} (${i.pos}) ${STATUS_SHORT[i.status]}`).join(', ');
+    const teams = [g.away.abbr, g.home.abbr].filter((t) => list(t).length);
+    if (!teams.length) return { tone: 'neutral', text: '• No key injuries listed', tip: 'No QB, RB, WR, TE or K on either injury report (injured reserve not counted).' };
+    const text = teams.map((t) => `${t}: ${describe(t)}`).join(' · ');
+    if (!pickedTeam) return { tone: 'neutral', text: `⚠ ${text}`, tip: 'Injuries to key players can swing a total either way.' };
+    const pickHurt = list(pickedTeam);
+    if (!pickHurt.length) return { tone: 'good', text: `✓ Opponent injuries: ${text}`, tip: `Only the opponent has key players hurt, which helps ${pickedTeam}.` };
+    const serious = pickHurt.some((i) => i.status !== 'Questionable');
+    return { tone: 'bad', text: `${serious ? '✖' : '⚠'} ${text}`, tip: `Injuries on ${pickedTeam} (the pick) work against this leg; injuries on the opponent help it.` };
   }
 
   function totalLeg(g, o, m, w) {
@@ -78,6 +143,8 @@
     over -= bump / 100;
     if (bump) parts.push(`weather +${bump} pts to Under: ${why.join(', ')}`);
     const pickOver = over > 0.5;
+    const probs = [{ name: 'DraftKings', p: book.home / 100 }];
+    if (m && m.total && m.total.line === l.total) probs.push({ name: 'Polymarket', p: m.total.over / 100 });
     return {
       g, kind: 'Total',
       pick: `${pickOver ? 'Over' : 'Under'} ${l.total}`,
@@ -85,6 +152,11 @@
       prob: pickOver ? over : 1 - over,
       detail: parts.join(' · '),
       weather: bump > 0,
+      signals: [
+        totalMovementSignal(l.totalOpen, l.total, pickOver),
+        agreementSignal(probs.map((x) => ({ name: x.name, p: pickOver ? x.p : 1 - x.p }))),
+        injurySignal(o.injuries, g, null),
+      ].filter(Boolean),
     };
   }
 
@@ -112,6 +184,13 @@
 
   // ---------- Rendering ----------
 
+  // Shared with the prop parlays (window.ParlaySignals) so every leg shows signals the same way.
+  function signalChips(signals) {
+    if (!signals || !signals.length) return '';
+    return `<div class="p-signals">${signals.map((s) => `<span class="sig ${s.tone}" title="${esc(s.tip || '')}">${esc(s.text)}</span>`).join('')}</div>`;
+  }
+  window.ParlaySignals = { chips: signalChips };
+
   // `kind` names the pool in the not-enough message ("open-air" or "upcoming").
   function parlayCard(size, legs, kind) {
     if (legs.length < size) {
@@ -136,6 +215,7 @@
           <span class="p-prob">${pct(l.prob)}</span>
         </div>
         <div class="p-why">${esc(l.kind)}${l.weather ? ' <span class="p-wx">weather</span>' : ''} · ${esc(l.detail)}</div>
+        ${signalChips(l.signals)}
       </li>`).join('');
     return `
       <article class="parlay">

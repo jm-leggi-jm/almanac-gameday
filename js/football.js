@@ -319,7 +319,7 @@ const Football = (() => {
       const home = wp[0].homeWinPercentage * 100;
       win = { home, away: 100 - home - (wp[0].tiePercentage || 0) * 100, pregame: true };
     }
-    const out = { win, lines: null };
+    const out = { win, lines: null, injuries: parseInjuries(summary) };
     if (!p) return out;
     const ps = p.pointSpread || {};
     const ml = p.moneyline || {};
@@ -337,8 +337,28 @@ const Football = (() => {
       underOdds: (tot.under && tot.under.close && tot.under.close.odds) || null,
       mlHome: (ml.home && ml.home.close && ml.home.close.odds) || null,
       mlAway: (ml.away && ml.away.close && ml.away.close.odds) || null,
+      mlHomeOpen: (ml.home && ml.home.open && ml.home.open.odds) || null,
+      mlAwayOpen: (ml.away && ml.away.open && ml.away.open.odds) || null,
     };
     return out;
+  }
+
+  // Current injury report from the same summary: { TEAM: [{ id, name, pos, status }] }.
+  // Injured reserve is left out: those players have been gone a while and the lines already know.
+  const INJURY_STATUS = { Out: 'Out', Doubtful: 'Doubtful', Questionable: 'Questionable', Suspension: 'Suspended' };
+  function parseInjuries(summary) {
+    const byTeam = {};
+    for (const t of summary.injuries || []) {
+      const abbr = t.team && t.team.abbreviation;
+      if (!abbr) continue;
+      byTeam[abbr] = (t.injuries || []).map((i) => ({
+        id: String((i.athlete && i.athlete.id) || ''),
+        name: (i.athlete && (i.athlete.shortName || i.athlete.displayName)) || 'Player',
+        pos: (i.athlete && i.athlete.position && i.athlete.position.abbreviation) || '',
+        status: INJURY_STATUS[i.status] || null,
+      })).filter((i) => i.status);
+    }
+    return byTeam;
   }
 
   function odds(g) {

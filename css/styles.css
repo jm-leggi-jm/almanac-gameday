@@ -461,3 +461,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
   background: linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.2) 35%, rgba(0, 0, 0, 0) 60%);
 }
+/* Signal chips under each parlay leg: line movement, source agreement, injuries */
+.p-signals { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 0 22px; }
+.sig { font-size: 11px; line-height: 1.35; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--grid); color: var(--text-2); background: var(--neutral); }
+.sig.good { border-color: #0ca30c; color: var(--text-1); }
+.sig.bad { border-color: #d03b3b; color: var(--text-1); }
+.sig.neutral { border-color: var(--grid); }

@@ -74,7 +74,8 @@
       const athleteId = ((item.athlete && item.athlete.$ref) || '').match(/athletes\/(\d+)/);
       if (!type || line == null || !athleteId) continue;
       const key = `${athleteId[1]}|${item.type.name}`;   // ESPN lists the over and under as twin entries
-      if (!seen.has(key)) seen.set(key, { g, athleteId: athleteId[1], type, line: Number(line) });
+      const open = item.open && item.open.target && item.open.target.value;
+      if (!seen.has(key)) seen.set(key, { g, athleteId: athleteId[1], type, line: Number(line), openLine: open == null ? null : Number(open) });
     }
     return [...seen.values()];
   }
@@ -124,6 +125,10 @@
     const now = new Date();
     const season = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();   // Jan-Feb games belong to last year's season
     const props = (await Promise.all(games.map((g) => gameProps(g).catch(() => [])))).flat();
+    // Injury reports (from the game summaries the game cards already load): player id -> status.
+    const injuryById = new Map();
+    const summaries = await Promise.all(games.map((g) => Football.odds(g).catch(() => null)));
+    for (const s of summaries) for (const list of Object.values((s && s.injuries) || {})) for (const i of list) injuryById.set(i.id, i.status);
     const athletes = [...new Set(props.map((p) => p.athleteId))];
     const byAthlete = new Map();
     let done = 0;
@@ -136,9 +141,28 @@
     const legs = props.map((p) => {
       const a = byAthlete.get(p.athleteId);
       const e = a && evaluate(p, a.recent);
-      return e && { ...e, player: a.info };
+      if (!e) return null;
+      const injury = injuryById.get(String(p.athleteId)) || null;
+      if (injury && injury !== 'Questionable') return null;   // out, doubtful or suspended: likely not playing
+      return { ...e, player: a.info, injury, signals: propSignals(e, injury) };
     }).filter(Boolean).sort((x, y) => y.prob - x.prob || y.n - x.n);
     return { week, games: games.length, props: props.length, players: athletes.length, legs };
+  }
+
+  // Signal chips for a prop leg: line movement since open, and the player's own injury status.
+  function propSignals(e, injury) {
+    const signals = [];
+    if (e.openLine != null) {
+      const moved = e.line - e.openLine;
+      const move = `${e.openLine} → ${e.line}`;
+      if (moved === 0) signals.push({ tone: 'neutral', text: `• Line steady (${e.line})`, tip: 'The line hasn’t moved since it opened.' });
+      else if ((moved > 0) === (e.side === 'Over')) signals.push({ tone: 'good', text: `▲ Line moved toward this pick (${move})`, tip: 'The sportsbook moved the line in the direction of this bet, a sign money agrees with it.' });
+      else signals.push({ tone: 'bad', text: `▼ Line moved against this pick (${move})`, tip: 'The sportsbook moved the line away from this bet since it opened.' });
+    }
+    signals.push(injury
+      ? { tone: 'bad', text: '⚠ Listed questionable', tip: 'On the injury report as questionable: he may sit, or play limited snaps.' }
+      : { tone: 'good', text: '✓ Not on the injury report', tip: 'Not listed as out, doubtful or questionable.' });
+    return signals;
   }
 
   // One leg per player, at most MAX_PER_GAME per game, taking the likeliest legs first.
@@ -180,6 +204,7 @@
         </div>
         <div class="p-why">${esc([l.player.pos, l.player.team].filter(Boolean).join(', '))} · ${esc(l.g.shortName)} ·
           ${l.side === 'Over' ? 'over' : 'under'} in ${l.hits} of his last ${l.n} games (avg ${l.avg.toFixed(1)})</div>
+        ${window.ParlaySignals ? window.ParlaySignals.chips(l.signals) : ''}
       </li>`).join('');
     return `
       <article class="parlay">
