@@ -13,9 +13,43 @@
   <script src="js/theme.js"></script>
 </head>
 <body>
-  <header class="top">
+  <header class="top banner">
+    <!-- Banner art: a football field seen from above (mowed stripes, yard lines, hash marks, end zones). -->
+    <svg class="banner-field" viewBox="0 0 1200 180" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      <defs>
+        <pattern id="mow" width="100" height="180" patternUnits="userSpaceOnUse">
+          <rect width="50" height="180" fill="#2f7a37"/><rect x="50" width="50" height="180" fill="#2a6f32"/>
+        </pattern>
+        <pattern id="hash" x="100" width="10" height="180" patternUnits="userSpaceOnUse">
+          <rect x="0" y="62" width="1.5" height="7" fill="#fff" opacity="0.4"/>
+          <rect x="0" y="100" width="1.5" height="7" fill="#fff" opacity="0.4"/>
+        </pattern>
+        <pattern id="yard" x="100" width="50" height="180" patternUnits="userSpaceOnUse">
+          <rect x="0" width="2" height="180" fill="#fff" opacity="0.5"/>
+        </pattern>
+        <pattern id="endzone" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="18" height="18" fill="#1e5a2a"/><rect width="9" height="18" fill="#22632f"/>
+        </pattern>
+      </defs>
+      <rect width="1200" height="180" fill="url(#mow)"/>
+      <rect x="100" width="1000" height="180" fill="url(#hash)"/>
+      <rect x="100" width="1000" height="180" fill="url(#yard)"/>
+      <rect width="100" height="180" fill="url(#endzone)"/>
+      <rect x="1100" width="100" height="180" fill="url(#endzone)"/>
+      <rect x="98" width="4" height="180" fill="#fff" opacity="0.75"/>
+      <rect x="1098" width="4" height="180" fill="#fff" opacity="0.75"/>
+      <g fill="#fff" opacity="0.4" font-family="Georgia, serif" font-weight="700" font-size="22" text-anchor="middle">
+        <text x="200" y="130">10</text><text x="300" y="130">20</text><text x="400" y="130">30</text>
+        <text x="500" y="130">40</text><text x="600" y="130">50</text><text x="700" y="130">40</text>
+        <text x="800" y="130">30</text><text x="900" y="130">20</text><text x="1000" y="130">10</text>
+      </g>
+    </svg>
     <div class="brand">
-      <h1>Almanac Game Day</h1>
+      <h1><svg class="ball" viewBox="0 0 40 24" aria-hidden="true" focusable="false">
+          <ellipse cx="20" cy="12" rx="19" ry="11" fill="#8b4a22" stroke="#5e3015" stroke-width="1.5"/>
+          <path d="M7 6.5 Q10 12 7 17.5 M33 6.5 Q30 12 33 17.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+          <path d="M14 12 H26 M16 9.5 V14.5 M19 9.5 V14.5 M22 9.5 V14.5 M25 9.5 V14.5" stroke="#fff" stroke-width="1.4"/>
+        </svg>Almanac Game Day</h1>
       <p class="tagline">The weather at every kickoff.</p>
     </div>
     <nav class="seg tabs" id="tabs" aria-label="Views">
@@ -48,12 +82,30 @@
         Prices and lines change constantly. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
     </section>
 
-    <section class="card span-2" id="parlays" aria-labelledby="p-title" hidden>
+    <section class="card span-2" id="parlays-view" aria-labelledby="p-title" hidden>
       <div class="card-head">
         <h2 id="p-title">Parlays</h2>
-        <button type="button" id="p-rebuild" class="ghost small">↻ Rebuild</button>
+        <button type="button" id="p-rebuild" class="ghost small">↻ Rebuild game parlays</button>
       </div>
       <p id="p-sub" class="muted small gd-sub"></p>
+
+      <div class="p-group-head first"><h3>Player-prop parlays</h3><span class="muted small">3, 4, 5 and 6 legs, player props only</span></div>
+      <p class="p-read"><b>How to read a card:</b> <i>Chance it hits</i> comes from each player's past games; <i>Break-even</i> is how often the parlay must hit for the payout to be worth it, at the assumed −110 per leg. Past games usually make these look better than they are (⚠).</p>
+      <div class="p-how">
+        <p>Built from DraftKings' player over/unders via ESPN (passing, rushing and receiving yards, and receptions) for this week's upcoming games, in all stadiums.
+          Each prop takes the side the player's history favors: how often he cleared that line in his last 16 games (this season and last), pulled toward 50% so a
+          small sample can't look like a sure thing. Players need at least 6 games. Only props whose line sits inside the player's normal range count (he cleared it
+          in 20–80% of those games): lines far outside it are alternate lines, or signs the sportsbook knows about a new role or an injury. Tiny lines (under 1.5 receptions,
+          14.5 rushing or receiving yards, 149.5 passing yards) are skipped too. Legs are the likeliest first, with one per player and at most 2 per game.</p>
+        <p><b>* ESPN doesn't publish prop prices,</b> so each leg is assumed to be −110 (the usual price for these lines). The real payout will differ, so check the sportsbook.</p>
+      </div>
+      <div class="pp-bar">
+        <button type="button" id="pp-build" class="small">Build prop parlays</button>
+        <span id="pp-status" class="muted small">Checks each player's recent games (a few hundred lookups), then reuses the results for 6 hours.</span>
+      </div>
+      <div id="pp-list" class="p-list"></div>
+
+      <div class="p-group-head"><h3>Game parlays</h3><span class="muted small">4, 6, 8 and 10 legs, one moneyline or over/under per game</span></div>
       <div class="p-how">
         <p><b>How these are built.</b> This week's games that haven't started, in two groups: <b>open-air stadiums only</b>,
           and <b>all stadiums</b> (domes, covered and retractable roofs too). Each game adds one leg, a <b>moneyline</b> or an <b>over/under</b>,
@@ -67,31 +119,15 @@
         </ul>
       </div>
 
-      <div class="p-group-head first"><h3>Open-air stadiums only</h3><span id="p-count-open" class="muted small"></span></div>
+      <div class="p-subgroup"><h4>Open-air stadiums only</h4><span id="p-count-open" class="muted small"></span></div>
+      <p class="p-read"><b>How to read a card:</b> <i>Chance it hits</i> is our estimate that every leg wins. <i>Break-even</i> is how often it must hit for the payout to be worth it. If the first is lower, the parlay pays less than it should (✗); if higher, it pays more (✓).</p>
       <div id="p-list-open" class="p-list"></div>
 
-      <div class="p-group-head"><h3>All stadiums, including domes and retractable roofs</h3><span id="p-count-all" class="muted small"></span></div>
+      <div class="p-subgroup"><h4>All stadiums, including domes and retractable roofs</h4><span id="p-count-all" class="muted small"></span></div>
       <div id="p-list-all" class="p-list"></div>
 
-      <div class="p-group-head"><h3>Player-prop parlays</h3><span class="muted small">3, 4, 5 and 6 legs, player props only</span></div>
-      <div class="p-how">
-        <p>Built from DraftKings' player over/unders via ESPN (passing, rushing and receiving yards, and receptions) for this week's upcoming games, in all stadiums.
-          Each prop takes the side the player's history favors: how often he cleared that line in his last 16 games (this season and last), pulled toward 50% so a
-          small sample can't look like a sure thing. Players need at least 6 games. Only props whose line sits inside the player's normal range count (he cleared it
-          in 20–80% of those games): lines far outside it are alternate lines, or signs the sportsbook knows about a new role or an injury. Tiny lines (under 1.5 receptions,
-          14.5 rushing or receiving yards, 149.5 passing yards) are skipped too. Legs are the likeliest first, with one per player and at most 2 per game.</p>
-        <p>"History says" is how often these legs would all have hit on past form. It tends to <b>overstate</b> the real chance, because the sportsbook sets its lines knowing
-          about injuries, matchups and game plans, and a history-based estimate doesn't.</p>
-        <p><b>* ESPN doesn't publish prop prices,</b> so each leg is assumed to be −110 (the usual price for these lines). The real payout will differ, so check the sportsbook.
-          History doesn't account for injuries, role changes or matchups.</p>
-      </div>
-      <div class="pp-bar">
-        <button type="button" id="pp-build" class="small">Build prop parlays</button>
-        <span id="pp-status" class="muted small">Checks each player's recent games (a few hundred lookups), then reuses the results for 6 hours.</span>
-      </div>
-      <div id="pp-list" class="p-list"></div>
-      <p class="fine"><b>For information only, not betting advice.</b> "Our estimate" multiplies each leg's chance, as if games were independent;
-        "Priced at" is the chance the combined odds imply, including the sportsbook's margin. Parlays rarely hit, and a longer parlay is far less likely to.
+      <p class="fine"><b>For information only, not betting advice.</b> <i>Chance it hits</i> multiplies each leg's chance, as if games were independent;
+        <i>Break-even</i> is the chance the combined payout implies, which includes the sportsbook's margin on every leg. Parlays rarely hit, and a longer parlay is far less likely to.
         Lines move constantly. Check the sportsbook before betting. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
     </section>
   </main>

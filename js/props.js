@@ -185,10 +185,15 @@
       <article class="parlay">
         <header class="p-head"><h3>${size}-leg prop parlay</h3><span class="p-total">${american(dec)}*</span></header>
         <dl class="p-stats">
-          <div><dt>$${STAKE} pays*</dt><dd>$${(STAKE * dec).toFixed(2)}</dd></div>
-          <div><dt>History says</dt><dd>${pct(ours)}</dd></div>
-          <div><dt>Priced at*</dt><dd>${pct(1 / dec)}</dd></div>
+          <div title="What a $${STAKE} bet returns if every leg hits, including your $${STAKE} back, assuming each leg is priced at -110.">
+            <dt>$${STAKE} bet pays*</dt><dd>$${(STAKE * dec).toFixed(2)}</dd><span class="p-sub">if every leg hits</span></div>
+          <div title="How often all these legs would have hit together, going by each player's recent games.">
+            <dt>Chance it hits</dt><dd>${pct(ours)}</dd><span class="p-sub">by past games</span></div>
+          <div title="How often the parlay must hit for this payout to break even, at the assumed -110 per leg.">
+            <dt>Break-even*</dt><dd>${pct(1 / dec)}</dd><span class="p-sub">what this payout needs</span></div>
         </dl>
+        <p class="p-verdict warn">⚠ <b>Past games say ${pct(ours)}, well above the ${pct(1 / dec)} needed.</b> That gap is probably not an edge:
+          past games don't know about injuries, matchups or role changes that the sportsbook prices in, so the real chance is likely lower.</p>
         <ol class="p-legs">${rows}</ol>
       </article>`;
   }

@@ -125,6 +125,12 @@
     const decimal = chosen.reduce((a, l) => a * decimalOdds(l.odds), 1);
     const ours = chosen.reduce((a, l) => a * l.prob, 1);
     const priced = 1 / decimal;
+    const money = (v) => `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const pays = STAKE * decimal;
+    const fair = STAKE / ours;   // what the bet would pay if the odds matched our estimate
+    const verdict = ours >= priced
+      ? `<p class="p-verdict good">✓ <b>Pays more than our odds say it should.</b> At ${pct(ours)}, a fair payout would be ${money(fair)}; this pays ${money(pays)}.</p>`
+      : `<p class="p-verdict bad">✗ <b>Pays less than it should.</b> At ${pct(ours)}, a fair payout would be ${money(fair)}; this pays ${money(pays)}. The gap is the sportsbook's margin, added once per leg.</p>`;
     const rows = chosen.map((l) => `
       <li class="p-leg">
         <div class="p-leg-top">
@@ -142,10 +148,14 @@
           <span class="p-total">${americanFromDecimal(decimal)}</span>
         </header>
         <dl class="p-stats">
-          <div><dt>$${STAKE} pays</dt><dd>$${(STAKE * decimal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
-          <div><dt>Our estimate</dt><dd>${pct(ours)}</dd></div>
-          <div><dt>Priced at</dt><dd>${pct(priced)}</dd></div>
+          <div title="What a $${STAKE} bet returns if every leg hits, including your $${STAKE} back.">
+            <dt>$${STAKE} bet pays</dt><dd>${money(pays)}</dd><span class="p-sub">if every leg hits</span></div>
+          <div title="Every leg's chance multiplied together: how often this parlay should hit, by our numbers (ESPN, Polymarket and DraftKings blended).">
+            <dt>Chance it hits</dt><dd>${pct(ours)}</dd><span class="p-sub">our estimate</span></div>
+          <div title="How often the parlay must hit for this payout to break even. It's what the sportsbook's price implies.">
+            <dt>Break-even</dt><dd>${pct(priced)}</dd><span class="p-sub">what this payout needs</span></div>
         </dl>
+        ${verdict}
         <ol class="p-legs">${rows}</ol>
       </article>`;
   }
@@ -182,7 +192,7 @@
   function setTab(tab) {
     const parlays = tab === 'parlays';
     $('gameday').hidden = parlays;
-    $('parlays').hidden = !parlays;
+    $('parlays-view').hidden = !parlays;   // not id="parlays", so a #parlays link switches tabs without scrolling
     document.querySelectorAll('#tabs [data-tab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tab === tab)));
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* fine */ }
     if (parlays) render();

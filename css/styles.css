@@ -429,3 +429,35 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .p-group-head h3 { margin: 0; font-size: 15px; }
 .p-roof { font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 999px; background: var(--neutral); color: var(--text-1); margin-left: 4px; }
 .pp-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.p-read { margin: -4px 0 12px; font-size: 12.5px; color: var(--text-2); }
+.p-stats dt { font-weight: 600; }
+.p-sub { font-size: 10.5px; color: var(--muted); }
+.p-verdict { margin: 0; font-size: 12.5px; padding: 8px 10px; border-radius: 6px; border-left: 4px solid var(--axis); background: var(--neutral); color: var(--text-1); }
+.p-verdict.good { border-left-color: #0ca30c; }
+.p-verdict.bad { border-left-color: #d03b3b; }
+.p-verdict.warn { border-left-color: #fab219; }
+
+/* Football-field banner (header) */
+.top.banner {
+  position: relative; overflow: hidden; max-width: none; min-height: 150px;
+  padding: 26px max(16px, calc((100% - 1868px) / 2)) 24px;
+  align-items: center; border-bottom: 0; margin-bottom: 8px;
+  box-shadow: inset 0 -40px 50px -30px rgba(0, 0, 0, 0.35);
+}
+.banner-field { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.banner > :not(.banner-field) { position: relative; z-index: 2; }   /* above the field (0) and its shade (1) */
+.banner h1 { color: #fff; display: flex; align-items: center; gap: 12px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55); }
+.banner .ball { width: 46px; height: 28px; flex: none; transform: rotate(-18deg); filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)); }
+.banner .tagline { color: #eef4ea; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); margin-left: 58px; }
+.banner .seg { border-color: rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.25); }
+.banner .seg button { color: #fff; }
+.banner .seg button + button { border-left-color: rgba(255, 255, 255, 0.7); }
+.banner .seg button[aria-pressed="true"] { background: #fff; color: #1f4d2b; }
+.banner .top-link { color: #fff; border-color: rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.25); }
+.p-subgroup { display: flex; align-items: baseline; gap: 10px; margin: 18px 0 8px; }
+.p-subgroup h4 { margin: 0; font-size: 14px; }
+/* Soft shade behind the title so it reads over the yard lines. */
+.top.banner::before {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.2) 35%, rgba(0, 0, 0, 0) 60%);
+}
