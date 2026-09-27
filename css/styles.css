@@ -424,3 +424,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .p-odds, .p-prob { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .p-prob { font-weight: 700; min-width: 36px; text-align: right; }
 .p-why { font-size: 11.5px; color: var(--muted); margin: 2px 0 0 22px; }
+.p-group-head { display: flex; align-items: baseline; gap: 10px; margin: 20px 0 10px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.p-group-head.first { border-top: 0; padding-top: 0; margin-top: 4px; }
+.p-group-head h3 { margin: 0; font-size: 15px; }
+.p-roof { font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 999px; background: var(--neutral); color: var(--text-1); margin-left: 4px; }

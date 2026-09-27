@@ -1,7 +1,8 @@
-// Parlays tab: 4-, 6-, 8- and 10-leg parlays from this week's not-yet-started games in open-air
-// stadiums (no domes, covered or retractable roofs). Each game contributes one leg, either a
-// moneyline or an over/under, whichever our estimate says is more likely. Legs are ranked by that
-// estimate and each parlay takes the top N. Informational only.
+// Parlays tab: 4-, 6-, 8- and 10-leg parlays from this week's not-yet-started games, built twice:
+// open-air stadiums only, and all stadiums (domes, covered and retractable roofs too). Each game
+// contributes one leg, either a moneyline or an over/under, whichever our estimate says is more
+// likely. Weather only adjusts totals for open-air games. Legs are ranked by that estimate and each
+// parlay takes the top N. Informational only.
 (() => {
   const SIZES = [4, 6, 8, 10];
   const TAB_KEY = 'almanac-gameday.tab';
@@ -87,7 +88,10 @@
     };
   }
 
+  // Weather only counts for open-air games: a fixed roof keeps it off the field, and retractable
+  // roofs are usually closed when it's bad.
   async function weatherFor(g) {
+    if (g.roof !== 'open') return null;
     try {
       const loc = await Football.locate(g.venue);
       if (!loc) return null;
@@ -108,12 +112,13 @@
 
   // ---------- Rendering ----------
 
-  function parlayCard(size, legs) {
+  // `kind` names the pool in the not-enough message ("open-air" or "upcoming").
+  function parlayCard(size, legs, kind) {
     if (legs.length < size) {
       return `
         <article class="parlay">
           <header class="p-head"><h3>${size}-leg parlay</h3></header>
-          <p class="gd-wait">Not enough eligible games this week. There are ${legs.length} open-air games with posted odds.</p>
+          <p class="gd-wait">Not enough eligible games this week. There are ${legs.length} ${kind} games with posted odds.</p>
         </article>`;
     }
     const chosen = legs.slice(0, size);
@@ -123,7 +128,7 @@
     const rows = chosen.map((l) => `
       <li class="p-leg">
         <div class="p-leg-top">
-          <span class="p-game">${esc(l.g.shortName)}</span>
+          <span class="p-game">${esc(l.g.shortName)}${l.g.roof !== 'open' ? ` <span class="p-roof">${esc(Football.ROOF_LABEL[l.g.roof])}</span>` : ''}</span>
           <b class="p-pick">${esc(l.pick)}</b>
           <span class="p-odds">${esc(showAmerican(l.odds))}</span>
           <span class="p-prob">${pct(l.prob)}</span>
@@ -149,7 +154,8 @@
   async function render() {
     const t = ++token;
     $('p-sub').textContent = 'Building parlays…';
-    $('p-list').innerHTML = '';
+    $('p-list-open').innerHTML = '';
+    $('p-list-all').innerHTML = '';
     let week;
     try {
       week = await Football.thisWeek();
@@ -158,12 +164,17 @@
       return;
     }
     const upcoming = week.games.filter((g) => g.state === 'pre');
-    const eligible = upcoming.filter((g) => g.roof === 'open');
-    const legs = (await Promise.all(eligible.map(legFor))).filter(Boolean).sort((a, b) => b.prob - a.prob);
+    // One leg per game, worked out once; the open-air parlays use the open-air subset.
+    const legs = (await Promise.all(upcoming.map(legFor))).filter(Boolean).sort((a, b) => b.prob - a.prob);
     if (t !== token) return;
+    const openLegs = legs.filter((l) => l.g.roof === 'open');
+    const openGames = upcoming.filter((g) => g.roof === 'open').length;
     const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    $('p-sub').textContent = `${week.label} · ${eligible.length} of ${upcoming.length} upcoming games are open-air · ${legs.length} with posted odds · updated ${updated}`;
-    $('p-list').innerHTML = SIZES.map((n) => parlayCard(n, legs)).join('');
+    $('p-sub').textContent = `${week.label} · ${upcoming.length} upcoming games (${openGames} open-air) · ${legs.length} with posted odds · updated ${updated}`;
+    $('p-count-open').textContent = `${openLegs.length} eligible games`;
+    $('p-count-all').textContent = `${legs.length} eligible games`;
+    $('p-list-open').innerHTML = SIZES.map((n) => parlayCard(n, openLegs, 'open-air')).join('');
+    $('p-list-all').innerHTML = SIZES.map((n) => parlayCard(n, legs, 'upcoming')).join('');
   }
 
   // ---------- Tabs ----------
