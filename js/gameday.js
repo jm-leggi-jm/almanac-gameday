@@ -573,16 +573,15 @@
   }
 
   // The banner's field is scaled to cover the header, so where its goal lines land depends on the window
-  // size. Measure them and pad the header so the title starts just inside the left goal line and the
-  // menu's right edge sits on the right one.
-  const TITLE_INSET = 14;   // px between the left goal line and the title
+  // size. Measure them and pad the header so the title and the menu each sit just inside their goal line.
+  const INSET = 14;   // px between each goal line and the title or menu
   const banner = document.querySelector('.top.banner');
   const goalLeft = document.querySelector('.banner-field .goal-left');
   const goalRight = document.querySelector('.banner-field .goal-right');
   function alignBanner() {
     const b = banner.getBoundingClientRect();
-    const left = goalLeft.getBoundingClientRect().right - b.left + TITLE_INSET;
-    const right = b.right - goalRight.getBoundingClientRect().right;
+    const left = goalLeft.getBoundingClientRect().right - b.left + INSET;
+    const right = b.right - goalRight.getBoundingClientRect().left + INSET;
     banner.style.paddingLeft = `${Math.max(16, Math.round(left))}px`;
     banner.style.paddingRight = `${Math.max(16, Math.round(right))}px`;
   }
