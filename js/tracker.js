@@ -1,11 +1,10 @@
-// Tracker: a condensed panel on the right with the games you pick using "☆ Track" on a game card.
+// Tracker: a condensed panel on the right with the games you pick using the ☆ in front of a game card's teams.
 // It shows on every tab while at least one game is tracked, and is hidden otherwise. It refreshes from
-// ESPN's scoreboard (one request for the whole week): every 30 seconds while a tracked game is live,
-// every 5 minutes otherwise. Picks are remembered, and dropped once the week's scoreboard moves on.
+// ESPN's scoreboard (one request for the whole week) every 15 seconds while any game is tracked and the
+// page is on screen. Picks are remembered, and dropped once the week's scoreboard moves on.
 const Tracker = (() => {
   const KEY = 'almanac-gameday.tracked';
-  const LIVE_MS = 30 * 1000;
-  const IDLE_MS = 5 * 60 * 1000;
+  const REFRESH_MS = 15 * 1000;
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -32,8 +31,8 @@ const Tracker = (() => {
   function button(g) {
     if (!g || g.state === 'post') return '';
     const on = isTracked(g.id);
-    return `<button type="button" class="trk-btn${on ? ' on' : ''}" data-track="${esc(g.id)}" aria-pressed="${on}"
-      title="${on ? 'Stop tracking this game' : 'Show this game in the tracker panel'}">${on ? '★ Tracking' : '☆ Track'}</button>`;
+    return `<button type="button" class="trk-btn${on ? ' on' : ''}" data-track="${esc(g.id)}" aria-pressed="${on}" aria-label="Track this game"
+      title="${on ? 'Stop tracking this game' : 'Show this game in the tracker panel'}">${on ? '★' : '☆'}</button>`;
   }
 
   function syncButtons() {
@@ -41,7 +40,7 @@ const Tracker = (() => {
       const on = isTracked(b.dataset.track);
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', String(on));
-      b.textContent = on ? '★ Tracking' : '☆ Track';
+      b.textContent = on ? '★' : '☆';
       b.title = on ? 'Stop tracking this game' : 'Show this game in the tracker panel';
     });
   }
@@ -122,11 +121,12 @@ const Tracker = (() => {
   async function refresh() {
     clearTimeout(timer);
     if (!ids.size) { show(false); return; }
+    if (document.hidden) return;   // paused while the window is hidden; resumes when it's back (see visibilitychange)
     let week;
     try {
       week = await Football.thisWeek();
     } catch {
-      timer = setTimeout(refresh, IDLE_MS);
+      timer = setTimeout(refresh, REFRESH_MS);
       return;
     }
     games = new Map(week.games.map((g) => [String(g.id), g]));
@@ -134,8 +134,7 @@ const Tracker = (() => {
     const stale = [...ids].filter((id) => !games.has(id));
     if (stale.length) { stale.forEach((id) => ids.delete(id)); save(); syncButtons(); }
     draw();
-    const live = [...ids].some((id) => games.get(id).state === 'in' || games.get(id).kickoff <= Date.now());
-    timer = setTimeout(refresh, live ? LIVE_MS : IDLE_MS);
+    timer = setTimeout(refresh, REFRESH_MS);
   }
 
   document.addEventListener('click', (e) => {
@@ -143,6 +142,15 @@ const Tracker = (() => {
     if (t) { setTracked(t.dataset.track, !isTracked(t.dataset.track)); return; }
     const x = e.target.closest('[data-untrack]');
     if (x) setTracked(x.dataset.untrack, false);
+  });
+  // Update now, without waiting for the next automatic refresh (one scoreboard request).
+  $('trk-refresh').addEventListener('click', async () => {
+    const btn = $('trk-refresh');
+    btn.disabled = true;
+    btn.textContent = '↻ Updating…';
+    await refresh();
+    btn.disabled = false;
+    btn.textContent = '↻ Refresh';
   });
   $('trk-clear').addEventListener('click', () => {
     ids.clear();

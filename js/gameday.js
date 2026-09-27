@@ -78,10 +78,11 @@
       : g.state === 'post' ? `<span class="gd-final">${esc(g.detail || 'Final')}</span>` : '';
     const place = [g.venue.city, g.venue.state || g.venue.country].filter(Boolean).join(', ');
     return `
-      <article class="game roof-${g.roof}${g.state === 'post' ? ' past' : ''}" data-i="${i}">
+      <article class="game roof-${g.roof}${g.state === 'post' ? ' past' : ''}" data-i="${i}" data-id="${esc(g.id)}">
         <header class="gd-head">
-          <div class="gd-matchup">${team(g.away)}<span class="gd-at">@</span>${team(g.home)}</div>
-          <div class="gd-when"><span>${esc(w.text)}</span><span class="gd-rel">${esc(w.rel)}</span>${statusTag}${typeof Tracker !== 'undefined' ? Tracker.button(g) : ''}</div>
+          <div class="gd-matchup">${typeof Tracker !== 'undefined' ? Tracker.button(g) : ''}${team(g.away)}<span class="gd-at">@</span>${team(g.home)}</div>
+          ${g.state === 'in' ? '<button type="button" class="gd-collapse" data-collapse aria-expanded="true" aria-label="Collapse this game" title="Collapse to just the score">▾</button>' : ''}
+          <div class="gd-when"><span class="gd-date">${esc(w.text)}</span><span class="gd-rel">${esc(w.rel)}</span>${statusTag}</div>
         </header>
         <div class="gd-venue">
           <span>${esc(g.venue.name)}${place ? ` · ${esc(place)}` : ''}${g.neutral ? ' · neutral site' : ''}</span>
@@ -355,28 +356,101 @@
         : result.finals ? 'All of this week’s games are final. See <b>Past Games</b> for results; next week’s games appear once ESPN posts them.'
           : 'No upcoming games.';
       $('gd-list').innerHTML = `<p class="empty-note">${note}</p>`;
+      $('gd-strip').innerHTML = '';
+      $('gd-strip').hidden = true;
       return;
     }
     $('gd-list').innerHTML = games.map(cardShell).join('');
+    $('gd-strip').innerHTML = '';
     $('gd-list').querySelectorAll('.game').forEach((card) => {
       const g = games[Number(card.dataset.i)];
       fillCard(card, g);
       fillOdds(card, g);
     });
+    // Forget collapsed games that are no longer live; re-collapse the rest.
+    const liveIds = new Set(games.filter((g) => g.state === 'in').map((g) => String(g.id)));
+    collapsed = new Set([...collapsed].filter((id) => liveIds.has(id)));
+    saveCollapsed();
+    collapsed.forEach((id) => setCollapsed(id, true));
+    updateStrip();
+  }
+
+  // ---------- Collapsing live games ----------
+
+  // ▾ on a live game's card shrinks it to a compact chip (teams, score, clock and quarter) in a strip
+  // above the grid; ▸ on the chip puts the full card back in its place. The card itself is moved, so
+  // its forecast, odds and radar stay loaded. Remembered until the game ends.
+  const COLLAPSE_KEY = 'almanac-gameday.collapsed';
+  let collapsed = new Set();
+  try { collapsed = new Set((JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || []).map(String)); } catch { collapsed = new Set(); }
+  function saveCollapsed() {
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed])); } catch { /* fine */ }
+  }
+
+  function setCollapsed(id, on) {
+    const card = document.querySelector(`#gameday .game[data-id="${CSS.escape(String(id))}"]`);
+    if (!card) return;
+    card.classList.toggle('collapsed', on);
+    const btn = card.querySelector('[data-collapse]');
+    if (btn) {
+      btn.textContent = on ? '▸' : '▾';
+      btn.setAttribute('aria-expanded', String(!on));
+      btn.setAttribute('aria-label', on ? 'Expand this game' : 'Collapse this game');
+      btn.title = on ? 'Show the full card' : 'Collapse to just the score';
+    }
+    if (card._radar) card._radar.setActive(!on);
+    if (on) {
+      $('gd-strip').appendChild(card);
+    } else {
+      // Back into the grid at its original position.
+      const i = Number(card.dataset.i);
+      const next = [...$('gd-list').children].find((c) => Number(c.dataset.i) > i);
+      $('gd-list').insertBefore(card, next || null);
+    }
+  }
+
+  function updateStrip() {
+    $('gd-strip').hidden = !$('gd-strip').children.length;
+  }
+
+  $('gameday').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-collapse]');
+    if (!b) return;
+    const id = b.closest('.game').dataset.id;
+    const on = !collapsed.has(id);
+    if (on) collapsed.add(id); else collapsed.delete(id);
+    saveCollapsed();
+    setCollapsed(id, on);
+    updateStrip();
+  });
+
+  // Scores, clock and quarter in place (no redraw), from a fresh scoreboard.
+  function updateScores(week) {
+    const byId = new Map(week.games.map((g) => [String(g.id), g]));
+    document.querySelectorAll('#gameday .game[data-id]').forEach((card) => {
+      const g = byId.get(card.dataset.id);
+      if (!g || g.state !== 'in') return;
+      const scores = card.querySelectorAll('.gd-score');
+      if (scores[0] && g.away.score != null) scores[0].textContent = g.away.score;
+      if (scores[1] && g.home.score != null) scores[1].textContent = g.home.score;
+      const live = card.querySelector('.gd-live');
+      if (live) live.textContent = `● ${g.detail || 'Live'}`;
+    });
   }
 
   // ---------- Moving finished games to Past Games ----------
 
-  // While a shown game is under way (or past its kickoff time), check ESPN's scoreboard every few
-  // minutes. When one kicks off, redraw so it joins the live games at the top; when one goes final,
-  // redraw so it leaves this tab, and reload Past Games so it's there.
-  const LIVE_CHECK_MS = 3 * 60 * 1000;
+  // While a shown game is under way (or past its kickoff time), check ESPN's scoreboard every minute.
+  // Scores, clock and quarter update in place. When a game kicks off, redraw so it joins the live
+  // games at the top; when one goes final, redraw so it leaves this tab, and reload Past Games.
+  const LIVE_CHECK_MS = 60 * 1000;
   let shown = [];
 
   setInterval(async () => {
     if (document.hidden || !shown.some((g) => g.state === 'in' || g.kickoff <= Date.now())) return;
     let week;
     try { week = await Football.thisWeek(); } catch { return; }
+    updateScores(week);
     const state = new Map(week.games.map((g) => [g.id, g.state]));
     const changed = shown.filter((g) => state.has(g.id) && state.get(g.id) !== g.state);
     if (!changed.length) return;

@@ -79,6 +79,7 @@
         </div>
       </div>
       <p id="gd-sub" class="muted small gd-sub"></p>
+      <div id="gd-strip" class="gd-strip" aria-label="Collapsed live games" hidden></div>
       <div id="gd-list" class="gd-list"></div>
       <p class="fine">Forecasts cover each game's window: kickoff through about three hours later, at the stadium.
         Live games come first; within live and upcoming, dome games are listed last: <b>Dome</b> and <b>Covered</b> stadiums keep weather off the field (the outside forecast is shown for fans),
@@ -162,9 +163,13 @@
         <h3>September 27, 2026</h3>
         <h4>Evening</h4>
         <ul>
-          <li><b>Tracker panel:</b> ☆ Track on any live or upcoming game adds it to a condensed panel on the right, shown on every tab while
-            something is tracked. It has score, clock, down &amp; distance, possession, red zone, live win chance and the last play, and
-            updates every 30 seconds during games.</li>
+          <li><b>Collapse live games:</b> ▾ on a live card shrinks it to a chip above the grid (teams, score, clock and quarter), and
+            ▸ restores it. Live scores, clock and quarter on the cards now update every minute without a redraw.</li>
+          <li><b>Card headers:</b> teams on the first line (☆ in front, ▾ at the right for live games) and date and status on the second,
+            the same on every card, so tracking a game no longer changes a card's size.</li>
+          <li><b>Tracker panel:</b> the ☆ in front of any live or upcoming game adds it to a condensed panel on the right, shown on every
+            tab while something is tracked. It has score, clock, down &amp; distance, possession, red zone, live win chance and the last
+            play, and refreshes every 15 seconds, or right away with ↻ Refresh.</li>
           <li><b>Change log:</b> this tab.</li>
           <li><b>Live games first:</b> games under way lead the Live / Upcoming list (domes last within live and upcoming), and a game
             moves up at kickoff instead of waiting for the next refresh.</li>
@@ -174,7 +179,7 @@
           <li><b>Were the predictions right?</b> Past Games cards show ✓ Picks right, ◐ Split or ✗ Upset, each source's pick with ✓/✗,
             the spread result, and a <i>Why the prediction may have missed</i> dropdown: upset odds, one-score finishes, turnovers,
             yardage, penalties, blown leads, weather, line movement and source disagreement.</li>
-          <li><b>Finished games move to Past Games:</b> Live / Upcoming shows only live and upcoming games and checks every 3 minutes
+          <li><b>Finished games move to Past Games:</b> Live / Upcoming shows only live and upcoming games and checks every minute
             while games are on. Past cards have no radar row.</li>
           <li><b>Banner:</b> tab buttons stacked on the right with the light/dark toggle underneath. The title and menu sit just inside
             the goal lines, and the yard numbers stay below the menu at every window width.</li>
@@ -216,7 +221,10 @@
   <aside id="tracker" class="tracker" aria-labelledby="trk-title" hidden>
     <div class="trk-head">
       <h2 id="trk-title">Tracker</h2>
-      <button type="button" id="trk-clear" class="ghost small">Clear</button>
+      <div class="trk-actions">
+        <button type="button" id="trk-refresh" class="ghost small" title="Update tracked games now">↻ Refresh</button>
+        <button type="button" id="trk-clear" class="ghost small">Clear</button>
+      </div>
     </div>
     <ul id="trk-list" class="trk-list"></ul>
     <p id="trk-updated" class="trk-foot"></p>
@@ -243,9 +251,9 @@
 
   <script src="js/radar.js"></script>
   <script src="js/football.js"></script>
+  <script src="js/tracker.js"></script>   <!-- before gameday.js, which adds its ☆ buttons to the cards -->
   <script src="js/gameday.js"></script>
   <script src="js/parlay.js"></script>
   <script src="js/props.js"></script>
-  <script src="js/tracker.js"></script>
 </body>
 </html>
