@@ -81,7 +81,7 @@
       <article class="game roof-${g.roof}${g.state === 'post' ? ' past' : ''}" data-i="${i}">
         <header class="gd-head">
           <div class="gd-matchup">${team(g.away)}<span class="gd-at">@</span>${team(g.home)}</div>
-          <div class="gd-when"><span>${esc(w.text)}</span><span class="gd-rel">${esc(w.rel)}</span>${statusTag}</div>
+          <div class="gd-when"><span>${esc(w.text)}</span><span class="gd-rel">${esc(w.rel)}</span>${statusTag}${typeof Tracker !== 'undefined' ? Tracker.button(g) : ''}</div>
         </header>
         <div class="gd-venue">
           <span>${esc(g.venue.name)}${place ? ` · ${esc(place)}` : ''}${g.neutral ? ' · neutral site' : ''}</span>

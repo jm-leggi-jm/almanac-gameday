@@ -168,6 +168,21 @@ const Football = (() => {
       roof: roofType(v.fullName, v.indoor),
       home: home ? side(home, started) : null,
       away: away ? side(away, started) : null,
+      situation: status.state === 'in' ? situation(c.situation) : null,
+    };
+  }
+
+  // Live game details from the scoreboard, for the tracker panel.
+  function situation(s) {
+    if (!s) return null;
+    const lp = s.lastPlay || {};
+    const prob = lp.probability && lp.probability.homeWinPercentage;
+    return {
+      down: s.down > 0 ? s.down : null, distance: s.distance ?? null,
+      possession: s.possession ? String(s.possession) : null,   // team id
+      redZone: !!s.isRedZone,
+      lastPlay: lp.text ? lp.text.trim() : null,
+      homeWin: prob == null ? null : prob * 100,
     };
   }
 

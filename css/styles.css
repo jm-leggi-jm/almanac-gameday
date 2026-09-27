@@ -498,3 +498,53 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .pv-rows .miss .pv-mark { color: #d03b3b; }
 .pv-rows .push .pv-mark { color: var(--muted); }
 .pv-why ul { margin: 0; padding: 8px 12px 10px 28px; display: grid; gap: 6px; line-height: 1.4; }
+/* Page body: the tabs' content, plus the tracker panel on the right when games are tracked */
+.layout { display: flex; align-items: flex-start; max-width: 1900px; margin: 0 auto; }
+.layout > .grid { flex: 1; min-width: 0; max-width: none; margin: 0; }
+
+/* Track toggle on game cards */
+.trk-btn {
+  margin-top: 4px; padding: 1px 8px; font-size: 12px; font-weight: 600; border-radius: 999px;
+  background: none; color: var(--text-2); border: 1px solid var(--axis); cursor: pointer;
+}
+.trk-btn:hover { border-color: var(--accent); color: var(--text-1); }
+.trk-btn.on { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+
+/* Tracker panel: condensed, sticks to the top of the window while scrolling */
+.tracker {
+  flex: 0 0 250px; position: sticky; top: 12px; margin: 8px 16px 24px 0;
+  max-height: calc(100vh - 24px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+}
+.tracker[hidden] { display: none; }
+.trk-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.trk-head h2 { margin: 0; font-size: 15px; }
+.trk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.trk-game { border: 1px solid var(--grid); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.trk-game.state-in { border-left: 3px solid #d03b3b; }
+.trk-game.state-post { opacity: 0.8; }
+.trk-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.trk-status { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.state-in .trk-status { color: #d03b3b; }
+.trk-x { background: none; border: 0; color: var(--muted); font-size: 16px; line-height: 1; padding: 0 2px; cursor: pointer; }
+.trk-x:hover { color: var(--text-1); }
+.trk-team { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+.trk-team img { width: 20px; height: 20px; }
+.trk-abbr { font-weight: 600; }
+.trk-team.lead .trk-abbr, .trk-team.lead .trk-score { color: var(--text-1); }
+.trk-ball { color: #b5651d; font-size: 10px; }
+.trk-score { margin-left: auto; font-size: 15px; }
+.trk-sit { margin-top: 4px; font-size: 12px; color: var(--text-2); }
+.trk-rz { color: #d03b3b; font-weight: 700; }
+.trk-wp { margin-top: 6px; display: grid; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.trk-wp .gd-prob-bar { grid-area: auto; height: 6px; }
+.trk-play {
+  margin: 6px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.trk-foot { margin: 8px 0 0; font-size: 11px; color: var(--muted); text-align: right; }
+
+/* Change log */
+.cl h3 { margin: 6px 0 4px; font-size: 16px; }
+.cl h4 { margin: 14px 0 6px; font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.cl ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; line-height: 1.45; max-width: 980px; }

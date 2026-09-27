@@ -295,7 +295,7 @@
   // ---------- Tabs ----------
 
   // Each tab shows one section. Section ids differ from the tab names, so a #parlays link switches tabs without scrolling.
-  const VIEWS = { games: 'gameday', parlays: 'parlays-view', past: 'past-view' };
+  const VIEWS = { games: 'gameday', parlays: 'parlays-view', past: 'past-view', changelog: 'changelog-view' };
 
   function setTab(tab) {
     if (!VIEWS[tab]) tab = 'games';

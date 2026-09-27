@@ -58,11 +58,13 @@
         <button type="button" data-tab="games">Live / Upcoming Games</button>
         <button type="button" data-tab="parlays">Parlay Generation</button>
         <button type="button" data-tab="past">Past Games</button>
+        <button type="button" data-tab="changelog">Change Log</button>
       </nav>
       <button type="button" id="theme-toggle" class="ghost small top-link">Dark mode</button>
     </div>
   </header>
 
+  <div class="layout">
   <main class="grid">
     <section class="card span-2" id="gameday" aria-labelledby="gd-title">
       <div class="card-head">
@@ -153,7 +155,73 @@
         <i>Break-even</i> is the chance the combined payout implies, which includes the sportsbook's margin on every leg. Parlays rarely hit, and a longer parlay is far less likely to.
         Lines move constantly. Check the sportsbook before betting. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
     </section>
+    <section class="card span-2" id="changelog-view" aria-labelledby="cl-title" hidden>
+      <div class="card-head"><h2 id="cl-title">Change log</h2></div>
+      <p class="muted small gd-sub">What's changed in Almanac Game Day, newest first. Times are Central.</p>
+      <div class="cl">
+        <h3>September 27, 2026</h3>
+        <h4>Evening</h4>
+        <ul>
+          <li><b>Tracker panel:</b> ☆ Track on any live or upcoming game adds it to a condensed panel on the right, shown on every tab while
+            something is tracked. It has score, clock, down &amp; distance, possession, red zone, live win chance and the last play, and
+            updates every 30 seconds during games.</li>
+          <li><b>Change log:</b> this tab.</li>
+          <li><b>Live games first:</b> games under way lead the Live / Upcoming list (domes last within live and upcoming), and a game
+            moves up at kickoff instead of waiting for the next refresh.</li>
+        </ul>
+        <h4>Afternoon</h4>
+        <ul>
+          <li><b>Were the predictions right?</b> Past Games cards show ✓ Picks right, ◐ Split or ✗ Upset, each source's pick with ✓/✗,
+            the spread result, and a <i>Why the prediction may have missed</i> dropdown: upset odds, one-score finishes, turnovers,
+            yardage, penalties, blown leads, weather, line movement and source disagreement.</li>
+          <li><b>Finished games move to Past Games:</b> Live / Upcoming shows only live and upcoming games and checks every 3 minutes
+            while games are on. Past cards have no radar row.</li>
+          <li><b>Banner:</b> tab buttons stacked on the right with the light/dark toggle underneath. The title and menu sit just inside
+            the goal lines, and the yard numbers stay below the menu at every window width.</li>
+          <li><b>Tabs renamed:</b> Live / Upcoming Games, Parlay Generation, Past Games.</li>
+          <li><b>Past Games tab:</b> every game this season from Week 1, by week, with the weather recorded during the game, pre-game odds,
+            the result vs. the line and a team filter.</li>
+          <li><b>Fix:</b> Polymarket's "last price before kickoff" could pick up the settled 0%/100% price. It now uses only prices from
+            before kickoff.</li>
+          <li><b>Publishing:</b> the site now publishes from the repository's <code>main</code> branch (gh-pages retired).</li>
+          <li><b>Prop parlays refresh:</b> ↻ New prop parlays builds different picks each time, skipping players already shown.</li>
+        </ul>
+        <h4>Midday</h4>
+        <ul>
+          <li><b>Sunday afternoon window:</b> 2-, 3- and 4-leg parlays from the 4:05 and 4:25 PM ET games, any stadium.</li>
+          <li><b>Parlay flags dropdown:</b> line movement, source agreement and injury flags for every leg, in one dropdown under each
+            card's payout.</li>
+          <li><b>Parlay cards:</b> the verdict line was removed; cards show the $5 payout, the chance it hits and the break-even.</li>
+        </ul>
+        <h4>Morning</h4>
+        <ul>
+          <li><b>Football banner:</b> a field drawn in SVG behind the title, with a football above it.</li>
+          <li><b>Player-prop parlays:</b> 3, 4, 5 and 6 legs from DraftKings player lines and each player's recent games, placed above
+            the game parlays.</li>
+          <li><b>Parlays tab:</b> 4/6/8/10-leg moneyline or over/under parlays, open-air only and all stadiums, priced for a $5 bet.</li>
+          <li><b>Rate limits:</b> weather requests are queued, retried and cached for 30 minutes. ↻ Refresh downloads everything fresh,
+            up to 3 times per 30 minutes.</li>
+          <li><b>Layout:</b> up to 4 games across at 1440px, down to 1. Card sections line up across each row, with a light/dark
+            toggle, This week first, and My teams with team search.</li>
+          <li><b>Odds &amp; prediction markets:</b> ESPN projection, Polymarket and DraftKings on every game, with spread, total and
+            moneyline.</li>
+          <li><b>Game cards:</b> the forecast for each game's window, roof-aware weather impact, and a fixed radar for open-air and
+            retractable-roof stadiums (none for domes). Dome games are listed last.</li>
+          <li><b>Forked</b> from Almanac Ledger as a games-only app, with its own desktop .exe and website.</li>
+        </ul>
+      </div>
+    </section>
   </main>
+
+  <aside id="tracker" class="tracker" aria-labelledby="trk-title" hidden>
+    <div class="trk-head">
+      <h2 id="trk-title">Tracker</h2>
+      <button type="button" id="trk-clear" class="ghost small">Clear</button>
+    </div>
+    <ul id="trk-list" class="trk-list"></ul>
+    <p id="trk-updated" class="trk-foot"></p>
+  </aside>
+  </div>
 
   <footer class="foot">
     <p class="fine">Schedules: ESPN · Forecasts: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
@@ -178,5 +246,6 @@
   <script src="js/gameday.js"></script>
   <script src="js/parlay.js"></script>
   <script src="js/props.js"></script>
+  <script src="js/tracker.js"></script>
 </body>
 </html>
