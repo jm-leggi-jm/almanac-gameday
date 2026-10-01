@@ -114,13 +114,14 @@
       <div class="p-group-head first"><h3>Player-prop parlays</h3><span class="muted small">3, 4, 5 and 6 legs, player props only</span></div>
       <p class="p-read"><b>How to read a card:</b> <i>Chance it hits</i> comes from each player's past games; <i>Break-even</i> is how often the parlay must hit for the payout to be worth it, at the assumed −110 per leg. Past games usually make these look better than they are (⚠).</p>
       <div class="p-how">
-        <p>Built from DraftKings' player over/unders via ESPN (passing, rushing and receiving yards, and receptions) for this week's upcoming games, in all stadiums.
+        <p>Built from DraftKings' player over/unders via ESPN (passing, rushing and receiving yards, and receptions) for the upcoming games you pick this week (all by default), in any stadium.
           Each prop takes the side the player's history favors: how often he cleared that line in his last 16 games (this season and last), pulled toward 50% so a
           small sample can't look like a sure thing. Players need at least 6 games. Only props whose line sits inside the player's normal range count (he cleared it
           in 20–80% of those games): lines far outside it are alternate lines, or signs the sportsbook knows about a new role or an injury. Tiny lines (under 1.5 receptions,
-          14.5 rushing or receiving yards, 149.5 passing yards) are skipped too. Legs are the likeliest first, with one per player and at most 2 per game.</p>
+          14.5 rushing or receiving yards, 149.5 passing yards) are skipped too. Legs are the likeliest first, with one per player and at most 2 per game (more when you pick only a few games, so the big parlays can fill).</p>
         <p><b>* ESPN doesn't publish prop prices,</b> so each leg is assumed to be −110 (the usual price for these lines). The real payout will differ, so check the sportsbook.</p>
       </div>
+      <div id="pp-games" class="pp-games"></div>
       <div class="pp-bar">
         <button type="button" id="pp-build" class="small">Build prop parlays</button>
         <span id="pp-status" class="muted small">Checks each player's recent games (a few hundred lookups), then reuses the results for 6 hours.</span>
@@ -161,6 +162,11 @@
       <p class="muted small gd-sub">What's changed in Almanac Game Day, newest first. Times are Central.</p>
       <div class="cl">
         <h3>October 1, 2026</h3>
+        <h4>Afternoon</h4>
+        <ul>
+          <li><b>Prop parlays:</b> new "Games to use" picker: tick the games the player-prop parlays draw from (All / None, saved on this
+            device). Unchecked games aren't looked up, and with only a few games picked, more legs per game are allowed so the bigger parlays can fill.</li>
+        </ul>
         <h4>Midday</h4>
         <ul>
           <li><b>Fix:</b> sportsbook lines of "EVEN" and "PK" no longer turn into NaN. EVEN counts as +100, PK as a pick'em, and a zero or

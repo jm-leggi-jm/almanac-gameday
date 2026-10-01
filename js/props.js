@@ -13,7 +13,9 @@
   const RECENT_GAMES = 16;
   const MIN_GAMES = 6;          // skip players with too little history
   const SHRINK = 4;             // pseudo-games (half over, half under) blended into every hit rate
+  const MAX_SIZE = Math.max(...SIZES);
   const MAX_PER_GAME = 2;       // limit legs from one game, since they tend to move together
+  const GAMES_KEY = 'gameday.propGames.v1';
   const CONCURRENCY = 6;
   const CACHE = 'gameday-props-v1';
   const TTL_MS = 6 * 60 * 60 * 1000;
@@ -124,7 +126,7 @@
   // `fresh`: re-download prop lines and injury reports (player game histories are still reused).
   async function buildLegs(onProgress, fresh = false) {
     const week = await Football.thisWeek();
-    const games = week.games.filter((g) => g.state === 'pre');
+    const games = week.games.filter((g) => g.state === 'pre' && selected.has(g.id));   // unchecked games cost no lookups
     const now = new Date();
     const season = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();   // Jan-Feb games belong to last year's season
     if (fresh) Football.clearOdds();   // injury reports come with the odds summaries
@@ -169,15 +171,18 @@
     return signals;
   }
 
-  // One leg per player, at most MAX_PER_GAME per game, taking the likeliest legs first and skipping
+  // With only a few games picked, the per-game limit rises so the biggest parlay can still fill.
+  const gameCap = (gameCount) => Math.max(MAX_PER_GAME, Math.ceil(MAX_SIZE / Math.max(gameCount, 1)));
+
+  // One leg per player, at most `cap` per game, taking the likeliest legs first and skipping
   // players in `skip` (those shown in earlier sets, so a refresh brings new picks).
-  function pickLegs(legs, size, skip = new Set()) {
+  function pickLegs(legs, size, skip = new Set(), cap = MAX_PER_GAME) {
     const players = new Set();
     const perGame = new Map();
     const chosen = [];
     for (const l of legs) {
       if (chosen.length === size) break;
-      if (skip.has(l.athleteId) || players.has(l.athleteId) || (perGame.get(l.g.id) || 0) >= MAX_PER_GAME) continue;
+      if (skip.has(l.athleteId) || players.has(l.athleteId) || (perGame.get(l.g.id) || 0) >= cap) continue;
       chosen.push(l);
       players.add(l.athleteId);
       perGame.set(l.g.id, (perGame.get(l.g.id) || 0) + 1);
@@ -191,11 +196,11 @@
   const american = (d) => { const a = d >= 2 ? (d - 1) * 100 : -100 / (d - 1); return `${a > 0 ? '+' : MINUS}${Math.round(Math.abs(a)).toLocaleString()}`; };
   const pct = (p) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`;
 
-  function card(size, legs, skip) {
-    const chosen = pickLegs(legs, size, skip);
+  function card(size, legs, skip, cap) {
+    const chosen = pickLegs(legs, size, skip, cap);
     if (chosen.length < size) {
       return `<article class="parlay"><header class="p-head"><h3>${size}-leg prop parlay</h3></header>
-        <p class="gd-wait">Not enough props with enough player history this week.</p></article>`;
+        <p class="gd-wait">Not enough eligible props in the selected games for ${size} legs.</p></article>`;
     }
     const dec = decimal(ASSUMED_ODDS) ** size;
     const ours = chosen.reduce((a, l) => a * l.prob, 1);
@@ -233,23 +238,119 @@
   // Sets of picks: each refresh skips every player shown in the earlier sets, so it builds new
   // parlays from the next-best props. When there aren't enough unused props left to fill the
   // largest parlay, it starts over from the top.
-  const MAX_SIZE = Math.max(...SIZES);
   let setNumber = 0;
   const shownPlayers = new Set();
+
+  // ---------- Game picker: which games the parlays draw from ----------
+
+  let pickable = [];          // this week's upcoming games, soonest first
+  let selected = new Set();   // ids of the checked games
+  let selectionKey = '';
+
+  const keyOf = () => [...selected].sort().join(',');
+
+  function resetSets() {
+    setNumber = 0;
+    shownPlayers.clear();
+  }
+
+  function saveSelection() {
+    try { localStorage.setItem(GAMES_KEY, JSON.stringify({ selected: [...selected], seen: pickable.map((g) => g.id) })); } catch { /* fine */ }
+  }
+
+  function updateCount() {
+    $('pp-games-count').textContent = `${selected.size} of ${pickable.length} games`;
+  }
+
+  function changed() {
+    saveSelection();
+    selectionKey = keyOf();
+    resetSets();
+    updateCount();
+  }
+
+  // Reads the week's games (cached by Football), then keeps the saved choice: games not seen before
+  // start checked, and games no longer in the week's list are dropped. A changed choice starts over at Set 1.
+  async function refreshPicker() {
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem(GAMES_KEY)) || {}; } catch { stored = {}; }
+    const picked = new Set(Array.isArray(stored.selected) ? stored.selected : []);
+    const seen = new Set(Array.isArray(stored.seen) ? stored.seen : []);
+    const week = await Football.thisWeek();
+    pickable = week.games.filter((g) => g.state === 'pre').sort((a, b) => a.kickoff - b.kickoff);
+    selected = new Set(pickable.filter((g) => !seen.has(g.id) || picked.has(g.id)).map((g) => g.id));
+    saveSelection();
+    if (selectionKey && keyOf() !== selectionKey) resetSets();
+    selectionKey = keyOf();
+    renderPicker();
+  }
+
+  function renderPicker() {
+    const box = $('pp-games');
+    box.textContent = '';
+    const head = document.createElement('div');
+    head.className = 'pp-games-head';
+    const title = document.createElement('b');
+    title.textContent = 'Games to use';
+    const count = document.createElement('span');
+    count.id = 'pp-games-count';
+    count.className = 'muted small';
+    head.append(title, count);
+    for (const [text, all] of [['All', true], ['None', false]]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'small';
+      b.textContent = text;
+      b.addEventListener('click', () => {
+        selected = new Set(all ? pickable.map((g) => g.id) : []);
+        box.querySelectorAll('input').forEach((i) => { i.checked = all; });
+        changed();
+      });
+      head.append(b);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'pp-games-grid';
+    for (const g of pickable) {
+      const label = document.createElement('label');
+      label.className = 'pp-game';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = selected.has(g.id);
+      input.addEventListener('change', () => {
+        if (input.checked) selected.add(g.id); else selected.delete(g.id);
+        changed();
+      });
+      const name = document.createElement('b');
+      name.textContent = g.shortName || 'Game';
+      const when = document.createElement('span');
+      when.className = 'muted small';
+      when.textContent = `${g.kickoff.toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', minute: '2-digit' })} CT`;
+      label.append(input, name, when);
+      grid.append(label);
+    }
+    box.append(head, grid);
+    updateCount();
+  }
 
   let building = false;
   async function build() {
     if (building) return;
     building = true;
-    const refresh = setNumber > 0;
     $('pp-build').disabled = true;
-    $('pp-list').innerHTML = '';
     try {
+      await refreshPicker();
+      if (!selected.size) {
+        $('pp-status').textContent = 'Pick at least one game.';
+        return;
+      }
+      const refresh = setNumber > 0;
+      $('pp-list').innerHTML = '';
       const result = await buildLegs((done, total) => {
         $('pp-status').textContent = total ? `Checking player histories: ${done} of ${total}…` : 'Loading this week’s props…';
       }, refresh);
+      const cap = gameCap(result.games);
       let startedOver = false;
-      if (pickLegs(result.legs, MAX_SIZE, shownPlayers).length < MAX_SIZE && shownPlayers.size) {
+      if (pickLegs(result.legs, MAX_SIZE, shownPlayers, cap).length < MAX_SIZE && shownPlayers.size) {
         shownPlayers.clear();
         setNumber = 0;
         startedOver = true;
@@ -257,13 +358,13 @@
       setNumber++;
       const skipped = shownPlayers.size;
       const skip = new Set(shownPlayers);
-      $('pp-list').innerHTML = SIZES.map((n) => card(n, result.legs, skip)).join('');
-      pickLegs(result.legs, MAX_SIZE, skip).forEach((l) => shownPlayers.add(l.athleteId));   // smaller parlays are the first legs of this one
+      $('pp-list').innerHTML = SIZES.map((n) => card(n, result.legs, skip, cap)).join('');
+      pickLegs(result.legs, MAX_SIZE, skip, cap).forEach((l) => shownPlayers.add(l.athleteId));   // smaller parlays are the first legs of this one
 
       const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
       const which = startedOver ? `Set 1 again (every eligible player had been shown, so this starts over from the top picks)`
         : setNumber === 1 ? 'Set 1: the top picks' : `Set ${setNumber}: new picks, skipping the ${skipped} players shown in earlier sets`;
-      $('pp-status').textContent = `${which} · ${result.props} props from ${result.games} upcoming games · ${result.legs.length} with enough history · ${refresh ? 'lines refreshed' : 'updated'} ${updated}`;
+      $('pp-status').textContent = `${which} · ${result.props} props from ${result.games} selected games · ${result.legs.length} with enough history · ${refresh ? 'lines refreshed' : 'updated'} ${updated}`;
       $('pp-build').textContent = '↻ New prop parlays';
       $('pp-build').title = 'Re-downloads the prop lines and injury reports, then builds a new set that skips the players already shown.';
     } catch (err) {
@@ -275,4 +376,9 @@
   }
 
   $('pp-build').addEventListener('click', build);
+
+  // Fill the picker when the Parlays tab opens (and on load, in case it is already showing).
+  const showPicker = () => refreshPicker().catch((e) => { console.error('PICKER', e.message); $('pp-games').textContent = 'Couldn’t load this week’s games.'; });
+  document.addEventListener('tabchange', (e) => { if (e.detail === 'parlays') showPicker(); });
+  if (!$('parlays-view').hidden) showPicker();
 })();
