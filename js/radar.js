@@ -16,7 +16,7 @@ const Radar = (() => {
 
   function project(lat, lon, z) {
     const size = TILE * 2 ** z;
-    const s = Math.sin((lat * Math.PI) / 180);
+    const s = Math.sin((Math.max(-85.0511, Math.min(85.0511, lat)) * Math.PI) / 180);
     return {
       x: ((lon + 180) / 360) * size,
       y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * size,
@@ -51,9 +51,16 @@ const Radar = (() => {
     if (!framesCache || Date.now() - framesCache.at > FRAMES_TTL_MS) {
       const promise = fetch(FRAMES_URL)
         .then((res) => { if (!res.ok) throw new Error(res.status); return res.json(); })
-        .then((data) => ({ host: data.host, frames: (data.radar && data.radar.past) || [] }));
-      promise.catch(() => { framesCache = null; });
-      framesCache = { at: Date.now(), promise };
+        .then((data) => {
+          const u = new URL(data.host);
+          if (u.protocol !== 'https:' || u.username || u.password || u.port || !u.hostname.endsWith('.rainviewer.com')) throw new Error('bad radar host');
+          const frames = ((data.radar && data.radar.past) || [])
+            .filter((f) => f && Number.isFinite(f.time) && typeof f.path === 'string' && /^\/[A-Za-z0-9/_.-]+$/.test(f.path));
+          return { host: u.origin, frames };
+        });
+      const entry = { at: Date.now(), promise };
+      promise.catch(() => { if (framesCache === entry) framesCache = null; });
+      framesCache = entry;
     }
     return framesCache.promise;
   }
@@ -67,7 +74,9 @@ const Radar = (() => {
     let frames = [];
     let current = 0;
     let playing = true;
-    let active = true;           // false while scrolled out of view: no animation
+    let alive = true;
+    let resizeTimer = null;
+    let active = true;          // false while scrolled out of view: no animation
     let timer = null;
     let refreshTimer = null;
     let resizeObserver = null;
@@ -129,7 +138,7 @@ const Radar = (() => {
 
     function tick() {
       clearTimeout(timer);
-      if (!playing || !active || !frames.length || document.hidden) return;
+      if (!alive || !playing || !active || !frames.length || document.hidden) return;
       const last = current === frames.length - 1;
       timer = setTimeout(() => { showFrame(last ? 0 : current + 1); tick(); }, last ? HOLD_MS : FRAME_MS);
     }
@@ -144,11 +153,13 @@ const Radar = (() => {
     async function loadFrames() {
       try {
         const data = await sharedFrames();
+        if (!alive) return;
         host = data.host;
         frames = data.frames;
         if (!frames.length) throw new Error('no frames');
         note.hidden = true;
       } catch {
+        if (!alive) return;
         frames = [];
         note.textContent = 'Radar is unavailable right now. The map will retry in a few minutes.';
         note.hidden = false;
@@ -263,7 +274,6 @@ const Radar = (() => {
       slider.addEventListener('input', () => { setPlaying(false); showFrame(Number(slider.value)); });
       if (!opts.fixed) enableDrag();
 
-      let resizeTimer;
       resizeObserver = new ResizeObserver(() => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => { render(); showFrame(current); }, 120);
@@ -290,7 +300,9 @@ const Radar = (() => {
     }
 
     function destroy() {
+      alive = false;
       clearTimeout(timer);
+      clearTimeout(resizeTimer);
       clearInterval(refreshTimer);
       if (resizeObserver) resizeObserver.disconnect();
       cleanups.splice(0).forEach((fn) => fn());

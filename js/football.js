@@ -108,11 +108,12 @@ const Football = (() => {
     }
     const res = await meteoFetch(url);
     const body = await res.text();
+    const json = JSON.parse(body);   // parse first: never cache a body that isn't JSON
     if (cache) {
       const stamped = new Response(body, { headers: { 'Content-Type': 'application/json', 'x-fetched-at': String(Date.now()) } });
       cache.put(url, stamped).catch(() => { /* storage full or unavailable: fine */ });
     }
-    return JSON.parse(body);
+    return json;
   }
 
   // ---------- Teams and schedules ----------
@@ -146,6 +147,15 @@ const Football = (() => {
     const t = c.team || {};
     const logo = t.logo || (t.logos && t.logos[0] && t.logos[0].href) || '';
     return { id: t.id, abbr: t.abbreviation, name: t.displayName, short: t.shortDisplayName || t.displayName, logo, score: started ? scoreOf(c) : null };
+  }
+
+  // Normalize a list of events, skipping any malformed one rather than failing the whole list.
+  function normalizeAll(events) {
+    const out = [];
+    for (const e of events || []) {
+      try { out.push(normalize(e)); } catch (err) { console.warn('Skipping malformed event', err); }
+    }
+    return out;
   }
 
   // ESPN event (schedule or scoreboard shape) -> the fields the app uses
@@ -188,12 +198,12 @@ const Football = (() => {
 
   async function teamSchedule(abbr) {
     const d = await getJSON(`${ESPN}/teams/${encodeURIComponent(abbr.toLowerCase())}/schedule`);
-    return (d.events || []).map(normalize);
+    return normalizeAll(d.events);
   }
 
   async function thisWeek() {
     const d = await getJSON(`${ESPN}/scoreboard`);
-    return { label: d.week ? `Week ${d.week.number}` : 'This week', games: (d.events || []).map(normalize) };
+    return { label: d.week ? `Week ${d.week.number}` : 'This week', games: normalizeAll(d.events) };
   }
 
   // Every finished game this season, week by week from Week 1 (and the playoffs once they start).
@@ -215,8 +225,13 @@ const Football = (() => {
       }
       if (type === 3) for (let w = 1; w <= current; w++) weeks.push({ type: 3, week: w, label: POSTSEASON[w] || `Playoffs, week ${w}` });
       const lists = await Promise.all(weeks.map(async (wk) => {
-        const data = await getJSON(`${ESPN}/scoreboard?seasontype=${wk.type}&week=${wk.week}&dates=${year}`);
-        return { ...wk, games: (data.events || []).map(normalize).filter((g) => g.state === 'post') };
+        try {
+          const data = await getJSON(`${ESPN}/scoreboard?seasontype=${wk.type}&week=${wk.week}&dates=${year}`);
+          return { ...wk, games: normalizeAll(data.events).filter((g) => g.state === 'post') };
+        } catch (err) {
+          console.warn(`Skipping ${wk.label}`, err);
+          return { ...wk, games: [] };
+        }
       }));
       const played = lists.filter((w) => w.games.length);
       const all = played.flatMap((w) => w.games);
@@ -287,13 +302,14 @@ const Football = (() => {
     const start = from.toISOString().slice(0, 10);
     const end = new Date().toISOString().slice(0, 10);
     const key = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)},${start},${end}`;
-    if (historyCache.has(key)) return historyCache.get(key);
+    const hit = historyCache.get(key);
+    if (hit && Date.now() - hit.at < HISTORY_TTL_MS) return hit.promise;
     const vars = 'temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
     const url = `${HISTORY}?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${vars}&start_date=${start}&end_date=${end}`
       + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT';
     const promise = meteoJSON(url, HISTORY_TTL_MS, HISTORY_CACHE).then((d) => ({ ...d.hourly, precipitation_probability: d.hourly.time.map(() => null) }));
-    promise.catch(() => historyCache.delete(key));
-    historyCache.set(key, promise);
+    promise.catch(() => { if (historyCache.get(key)?.promise === promise) historyCache.delete(key); });
+    historyCache.set(key, { at: Date.now(), promise });
     return promise;
   }
 
@@ -371,7 +387,12 @@ const Football = (() => {
   const ODDS_TTL_MS = 30 * 60 * 1000;
   const oddsCache = new Map();
 
-  const num = (s) => (s == null || s === '' ? null : parseFloat(String(s).replace(/^[ou]/, '')));
+  const num = (s) => {
+    if (s == null || s === '') return null;
+    const t = String(s).trim().replace(/^[ou]/i, '').replace('−', '-').toUpperCase();
+    const v = t === 'EVEN' || t === 'EV' ? 100 : t === 'PK' || t === 'PICK' ? 0 : parseFloat(t);
+    return Number.isFinite(v) ? v : null;
+  };
 
   // Team box-score stats for a finished game, keyed 'home' / 'away' (matched by team id).
   function parseStats(summary, g) {
@@ -477,7 +498,7 @@ const Football = (() => {
 
   // Sportsbook moneylines -> win chances with the bookmaker's margin ("vig") removed, so they sum to 100%.
   function impliedFromMoneylines(mlHome, mlAway) {
-    const p = (ml) => { const n = num(ml); return n == null ? null : n < 0 ? -n / (-n + 100) : 100 / (n + 100); };
+    const p = (ml) => { const n = num(ml); return n == null || n === 0 ? null : n < 0 ? -n / (-n + 100) : 100 / (n + 100); };
     const h = p(mlHome);
     const a = p(mlAway);
     if (h == null || a == null) return null;
@@ -594,6 +615,7 @@ const Football = (() => {
   async function clearCaches() {
     forecastCache.clear();
     seasonCache = null;
+    historyCache.clear();
     oddsCache.clear();
     marketCache.clear();
     if ('caches' in self) await caches.delete(METEO_CACHE).catch(() => {});

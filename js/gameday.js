@@ -147,11 +147,12 @@
 
   const MINUS = '−';
   const signed = (v) => (v > 0 ? `+${v}` : v < 0 ? `${MINUS}${Math.abs(v)}` : '0');
-  const american = (s) => (s ? String(s).replace('-', MINUS) : '—');
+  const american = (s) => (s ? esc(String(s).replace('-', MINUS)) : '—');
   const money = (v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${Math.round(v)}`);
 
   // `dim`: shown faded (e.g. a market with almost no money in it).
   function probRow(g, label, away, home, note, dim = false) {
+    if (!Number.isFinite(away) || !Number.isFinite(home) || away + home <= 0) return emptyRow(label, 'Not available');
     const a = Math.round((away / (away + home)) * 100);
     const h = 100 - a;   // so the two always add to 100
     return `
@@ -220,7 +221,7 @@
       const spread = spreadText(g, l);
       if (spread) facts.push(`<div><dt>Spread</dt><dd>${spread}</dd></div>`);
       if (l.total != null) {
-        facts.push(`<div><dt>Total</dt><dd>${l.total}${l.overOdds ? ` (o ${american(l.overOdds)} / u ${american(l.underOdds)})` : ''}${l.totalOpen != null && l.totalOpen !== l.total ? ` <span class="muted">opened ${l.totalOpen}</span>` : ''}</dd></div>`);
+        facts.push(`<div><dt>Total</dt><dd>${esc(l.total)}${l.overOdds ? ` (o ${american(l.overOdds)} / u ${american(l.underOdds)})` : ''}${l.totalOpen != null && l.totalOpen !== l.total ? ` <span class="muted">opened ${esc(l.totalOpen)}</span>` : ''}</dd></div>`);
       }
       if (l.mlHome || l.mlAway) facts.push(`<div><dt>Moneyline</dt><dd>${esc(g.away.abbr)} ${american(l.mlAway)} · ${esc(g.home.abbr)} ${american(l.mlHome)}</dd></div>`);
     }

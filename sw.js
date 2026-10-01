@@ -1,5 +1,5 @@
 // Service worker: lets the installed app open without the local server, and shows the last weather seen when offline.
-const SHELL_CACHE = 'gameday-shell-v38';
+const SHELL_CACHE = 'gameday-shell-v40';
 const DATA_CACHE = 'weather-data-v1';
 const SHELL_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
@@ -41,7 +41,8 @@ async function shell(request) {
     // no-cache: revalidate with the server so a fresh publish isn't masked by the browser's
     // 10-minute HTTP cache (which could pair a new page with old scripts).
     const res = await fetch(request.mode === 'navigate' ? request.url : request, { cache: 'no-cache' });
-    if (res.ok) cache.put(key, res.clone());
+    if (!res.ok) return (await cache.match(key, { ignoreSearch: true })) || res;
+    await cache.put(key, res.clone()).catch(() => {});
     return res;
   } catch {
     const cached = await cache.match(key, { ignoreSearch: true });
@@ -54,7 +55,8 @@ async function weather(request) {
   const cache = await caches.open(DATA_CACHE);
   try {
     const res = await fetch(request);
-    if (res.ok) cache.put(dataKey(request.url), res.clone());
+    if (!res.ok) return (await cache.match(dataKey(request.url))) || res;
+    await cache.put(dataKey(request.url), res.clone()).catch(() => {});
     return res;
   } catch (err) {
     const cached = await cache.match(dataKey(request.url));
@@ -67,5 +69,5 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin === self.location.origin) event.respondWith(shell(event.request));
-  else if (url.hostname.endsWith('open-meteo.com') || url.hostname === 'site.api.espn.com' || url.hostname === 'gamma-api.polymarket.com' || url.hostname === 'clob.polymarket.com') event.respondWith(weather(event.request));
+  else if (['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'historical-forecast-api.open-meteo.com'].includes(url.hostname) || url.hostname === 'site.api.espn.com' || url.hostname === 'gamma-api.polymarket.com' || url.hostname === 'clob.polymarket.com') event.respondWith(weather(event.request));
 });

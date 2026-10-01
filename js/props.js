@@ -57,8 +57,9 @@
     const res = await slot(() => fetch(url));
     if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
     const body = await res.text();
+    const json = JSON.parse(body);   // parse first: never cache a body that isn't JSON
     if (cache) cache.put(url, new Response(body, { headers: { 'x-fetched-at': String(Date.now()) } })).catch(() => {});
-    return JSON.parse(body);
+    return json;
   }
 
   // ---------- Data ----------
@@ -110,7 +111,7 @@
   }
 
   function evaluate(prop, games) {
-    const values = games.map((row) => prop.type.stats.reduce((sum, s) => sum + (row[s] ?? NaN), 0)).filter((v) => !Number.isNaN(v));
+    const values = games.map((row) => prop.type.stats.reduce((sum, s) => sum + (row[s] ?? NaN), 0)).filter((v) => !Number.isNaN(v) && v !== prop.line);   // a push is neither over nor under
     if (values.length < MIN_GAMES || prop.line < prop.type.minLine) return null;
     const over = values.filter((v) => v > prop.line).length;
     const n = values.length;
@@ -221,8 +222,10 @@
             <dt>Break-even*</dt><dd>${pct(1 / dec)}</dd><span class="p-sub">what this payout needs</span></div>
         </dl>
         ${window.ParlaySignals ? window.ParlaySignals.dropdown(chosen, (l) => `${l.player.name} ${l.side} ${l.line}`) : ''}
-        <p class="p-verdict warn">⚠ <b>Past games say ${pct(ours)}, well above the ${pct(1 / dec)} needed.</b> That gap is probably not an edge:
-          past games don't know about injuries, matchups or role changes that the sportsbook prices in, so the real chance is likely lower.</p>
+        <p class="p-verdict warn">⚠ <b>Past games say ${pct(ours)}, ${ours > 1 / dec ? 'well above' : 'below'} the ${pct(1 / dec)} needed.</b> ${ours > 1 / dec
+          ? `That gap is probably not an edge:
+          past games don't know about injuries, matchups or role changes that the sportsbook prices in, so the real chance is likely lower.`
+          : `Even by past games this payout isn't worth it, and those games don't know about injuries, matchups or role changes, so the real chance is likely lower still.`}</p>
         <ol class="p-legs">${rows}</ol>
       </article>`;
   }
