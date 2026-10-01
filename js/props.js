@@ -175,14 +175,15 @@
   const gameCap = (gameCount) => Math.max(MAX_PER_GAME, Math.ceil(MAX_SIZE / Math.max(gameCount, 1)));
 
   // One leg per player, at most `cap` per game, taking the likeliest legs first and skipping
-  // players in `skip` (those shown in earlier sets, so a refresh brings new picks).
-  function pickLegs(legs, size, skip = new Set(), cap = MAX_PER_GAME) {
+  // players in `skip` and props in `skipProps` (those shown in earlier sets, so a refresh brings new picks).
+  const propKey = (l) => `${l.athleteId}|${l.type.label}`;
+  function pickLegs(legs, size, skip = new Set(), cap = MAX_PER_GAME, skipProps = new Set()) {
     const players = new Set();
     const perGame = new Map();
     const chosen = [];
     for (const l of legs) {
       if (chosen.length === size) break;
-      if (skip.has(l.athleteId) || players.has(l.athleteId) || (perGame.get(l.g.id) || 0) >= cap) continue;
+      if (skip.has(l.athleteId) || skipProps.has(propKey(l)) || players.has(l.athleteId) || (perGame.get(l.g.id) || 0) >= cap) continue;
       chosen.push(l);
       players.add(l.athleteId);
       perGame.set(l.g.id, (perGame.get(l.g.id) || 0) + 1);
@@ -196,8 +197,8 @@
   const american = (d) => { const a = d >= 2 ? (d - 1) * 100 : -100 / (d - 1); return `${a > 0 ? '+' : MINUS}${Math.round(Math.abs(a)).toLocaleString()}`; };
   const pct = (p) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`;
 
-  function card(size, legs, skip, cap) {
-    const chosen = pickLegs(legs, size, skip, cap);
+  function card(size, legs, skip, cap, skipProps) {
+    const chosen = pickLegs(legs, size, skip, cap, skipProps);
     if (chosen.length < size) {
       return `<article class="parlay"><header class="p-head"><h3>${size}-leg prop parlay</h3></header>
         <p class="gd-wait">Not enough eligible props in the selected games for ${size} legs.</p></article>`;
@@ -235,11 +236,35 @@
       </article>`;
   }
 
-  // Sets of picks: each refresh skips every player shown in the earlier sets, so it builds new
-  // parlays from the next-best props. When there aren't enough unused props left to fill the
-  // largest parlay, it starts over from the top.
+  // Sets of picks: each refresh builds new parlays from the next-best props. Tier 1 skips every player
+  // shown in earlier sets; if that can't fill the largest parlay, tier 2 lets a shown player back in on a
+  // prop type not yet shown for him. A prop is never repeated until neither tier can fill it, then it starts over.
   let setNumber = 0;
   const shownPlayers = new Set();
+  const shownProps = new Set();   // athleteId|type keys
+  let lastProps = new Set();      // the previous set's props, avoided again right after a restart
+
+  // The biggest parlay these legs can fill at all (a tiny pool may not reach MAX_SIZE even on a fresh start).
+  const targetOf = (legs, cap) => Math.min(MAX_SIZE, pickLegs(legs, MAX_SIZE, new Set(), cap).length);
+
+  const nextSet = (legs, cap, players, props, target = MAX_SIZE) => {
+    const t1 = pickLegs(legs, MAX_SIZE, players, cap);
+    if (t1.length >= target) return { skip: new Set(players), skipProps: new Set() };
+    const t2 = pickLegs(legs, MAX_SIZE, new Set(), cap, props);
+    return t2.length >= target ? { skip: new Set(), skipProps: new Set(props) } : null;
+  };
+
+  // How many full sets the eligible legs can give before anything repeats (stops counting at 6).
+  function countSets(legs, cap) {
+    const players = new Set();
+    const props = new Set();
+    const target = targetOf(legs, cap);
+    let n = 0;
+    for (let sel; target && n < 6 && (sel = nextSet(legs, cap, players, props, target)); n++) {
+      pickLegs(legs, MAX_SIZE, sel.skip, cap, sel.skipProps).forEach((l) => { players.add(l.athleteId); props.add(propKey(l)); });
+    }
+    return n;
+  }
 
   // ---------- Game picker: which games the parlays draw from ----------
 
@@ -252,6 +277,8 @@
   function resetSets() {
     setNumber = 0;
     shownPlayers.clear();
+    shownProps.clear();
+    lastProps = new Set();
   }
 
   function saveSelection() {
@@ -350,23 +377,34 @@
       }, refresh);
       const cap = gameCap(result.games);
       let startedOver = false;
-      if (pickLegs(result.legs, MAX_SIZE, shownPlayers, cap).length < MAX_SIZE && shownPlayers.size) {
+      const target = targetOf(result.legs, cap);
+      let sel = nextSet(result.legs, cap, shownPlayers, shownProps, target);
+      if (!sel) {
+        startedOver = setNumber > 0;
         shownPlayers.clear();
+        shownProps.clear();
         setNumber = 0;
-        startedOver = true;
+        sel = nextSet(result.legs, cap, new Set(), lastProps, target) || { skip: new Set(), skipProps: new Set() };   // avoid repeating the last set right away if possible
       }
       setNumber++;
-      const skipped = shownPlayers.size;
-      const skip = new Set(shownPlayers);
-      $('pp-list').innerHTML = SIZES.map((n) => card(n, result.legs, skip, cap)).join('');
-      pickLegs(result.legs, MAX_SIZE, skip, cap).forEach((l) => shownPlayers.add(l.athleteId));   // smaller parlays are the first legs of this one
+      const skipped = sel.skip.size;
+      $('pp-list').innerHTML = SIZES.map((n) => card(n, result.legs, sel.skip, cap, sel.skipProps)).join('');
+      lastProps = new Set();
+      pickLegs(result.legs, MAX_SIZE, sel.skip, cap, sel.skipProps).forEach((l) => {   // smaller parlays are the first legs of this one
+        shownPlayers.add(l.athleteId);
+        shownProps.add(propKey(l));
+        lastProps.add(propKey(l));
+      });
+      const est = countSets(result.legs, cap);
 
       const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      const which = startedOver ? `Set 1 again (every eligible player had been shown, so this starts over from the top picks)`
-        : setNumber === 1 ? 'Set 1: the top picks' : `Set ${setNumber}: new picks, skipping the ${skipped} players shown in earlier sets`;
+      const limit = est < 6 ? ` of about ${Math.max(est, 1)}: only ${result.legs.length} eligible props in the selected games, so picks repeat after that` : '';
+      const which = startedOver ? `Set 1 again${limit} (not enough unused props were left to fill a full parlay, so this starts over from the top picks)`
+        : setNumber === 1 ? `Set 1${limit}${limit ? '' : ': the top picks'}`
+        : `Set ${setNumber}${limit}${limit ? '' : ': new picks'}, ${skipped ? `skipping the ${skipped} players shown in earlier sets` : 'no prop repeated from earlier sets (some players return on a different prop)'}`;
       $('pp-status').textContent = `${which} · ${result.props} props from ${result.games} selected games · ${result.legs.length} with enough history · ${refresh ? 'lines refreshed' : 'updated'} ${updated}`;
       $('pp-build').textContent = '↻ New prop parlays';
-      $('pp-build').title = 'Re-downloads the prop lines and injury reports, then builds a new set that skips the players already shown.';
+      $('pp-build').title = 'Re-downloads the prop lines and injury reports, then builds a new set with different props than every earlier set (new players first, then known players on a new prop type). It starts over only when too few unused props remain.';
     } catch (err) {
       $('pp-status').textContent = `Couldn’t build prop parlays (${err.message}).`;
     } finally {
