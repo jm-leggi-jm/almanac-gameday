@@ -160,6 +160,23 @@
       <div class="card-head"><h2 id="cl-title">Change log</h2></div>
       <p class="muted small gd-sub">What's changed in Almanac Game Day, newest first. Times are Central.</p>
       <div class="cl">
+        <h3>October 1, 2026</h3>
+        <h4>Midday</h4>
+        <ul>
+          <li><b>Fix:</b> sportsbook lines of "EVEN" and "PK" no longer turn into NaN. EVEN counts as +100, PK as a pick'em, and a zero or
+            unreadable price shows as not available instead of "NaN%".</li>
+          <li><b>Safer text:</b> odds, totals, down &amp; distance from the feeds are now escaped before they are shown.</li>
+          <li><b>Tracker:</b> starred games from later weeks are no longer dropped on the next refresh, and one bad game can no longer stop
+            the 15-second updates or leave ↻ Refresh stuck on "Updating…".</li>
+          <li><b>Prop parlays:</b> a stat that lands exactly on the line (a push) no longer counts as an Under, and the verdict now says
+            whether the card is actually above or below break-even.</li>
+          <li><b>Parlays and schedules:</b> one malformed game no longer blanks the whole parlay list, the week's games or the season.</li>
+          <li><b>Weather data:</b> bad responses are no longer cached, and same-day history now refreshes instead of staying stale.</li>
+          <li><b>Offline cache:</b> only the real Open-Meteo hosts are cached, and a server error (429/5xx) now falls back to your saved
+            copy when you have one.</li>
+          <li><b>Radar:</b> radar tile hosts are checked, a closed radar stops loading tiles, and bad frame times no longer show "NaN min ago".</li>
+          <li><b>Review:</b> found by a Claude Sonnet and Grok Build code review (pull request #1).</li>
+        </ul>
         <h3>September 27, 2026</h3>
         <h4>Evening</h4>
         <ul>
