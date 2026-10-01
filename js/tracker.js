@@ -82,7 +82,7 @@ const Tracker = (() => {
     const started = g.state !== 'pre';
     const s = g.situation;
     const parts = [];
-    if (s && s.down && s.possession) parts.push(`${ORDINAL[s.down] || `${s.down}th`} & ${s.distance}`);
+    if (s && s.down && s.possession) parts.push(`${esc(ORDINAL[s.down] || `${s.down}th`)} & ${esc(s.distance)}`);
     if (s && s.possession) {
       const has = [g.home, g.away].find((t) => String(t.id) === s.possession);
       if (has) parts.push(`${esc(has.abbr)} ball`);
@@ -118,6 +118,8 @@ const Tracker = (() => {
     $('trk-updated').textContent = `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`;
   }
 
+  const seen = new Set();   // tracked ids the current-week scoreboard has listed at least once
+
   async function refresh() {
     clearTimeout(timer);
     if (!ids.size) { show(false); return; }
@@ -130,10 +132,12 @@ const Tracker = (() => {
       return;
     }
     games = new Map(week.games.map((g) => [String(g.id), g]));
-    // A tracked game that's no longer on the scoreboard is from a past week: let it go.
-    const stale = [...ids].filter((id) => !games.has(id));
+    // A tracked game that was listed and has since rolled off the scoreboard is from a past week: let it go.
+    // Ids the scoreboard never listed are kept (they may belong to another week or a partial response).
+    games.forEach((_, id) => seen.add(id));
+    const stale = [...ids].filter((id) => seen.has(id) && !games.has(id));
     if (stale.length) { stale.forEach((id) => ids.delete(id)); save(); syncButtons(); }
-    draw();
+    try { draw(); } catch (err) { console.error(err); }
     timer = setTimeout(refresh, REFRESH_MS);
   }
 
@@ -148,9 +152,10 @@ const Tracker = (() => {
     const btn = $('trk-refresh');
     btn.disabled = true;
     btn.textContent = '↻ Updating…';
-    await refresh();
-    btn.disabled = false;
-    btn.textContent = '↻ Refresh';
+    try { await refresh(); } finally {
+      btn.disabled = false;
+      btn.textContent = '↻ Refresh';
+    }
   });
   $('trk-clear').addEventListener('click', () => {
     ids.clear();

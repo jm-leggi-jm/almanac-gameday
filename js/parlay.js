@@ -26,7 +26,12 @@
 
   // ---------- Odds math ----------
 
-  const num = (s) => (s == null || s === '' ? null : parseFloat(String(s).replace(MINUS, '-')));
+  const num = (s) => {
+    if (s == null || s === '') return null;
+    const t = String(s).trim().replace(MINUS, '-').toUpperCase();
+    const v = t === 'EVEN' || t === 'EV' ? 100 : t === 'PK' || t === 'PICK' ? 0 : parseFloat(t);
+    return Number.isFinite(v) ? v : null;
+  };
   function decimalOdds(american) {
     const n = num(american);
     if (n == null || n === 0) return null;
@@ -277,7 +282,13 @@
     }
     const upcoming = week.games.filter((g) => g.state === 'pre');
     // One leg per game, worked out once; the open-air parlays use the open-air subset.
-    const legs = (await Promise.all(upcoming.map(legFor))).filter(Boolean).sort((a, b) => b.prob - a.prob);
+    let legs;
+    try {
+      legs = (await Promise.all(upcoming.map(legFor))).filter(Boolean).sort((a, b) => b.prob - a.prob);
+    } catch (err) {
+      if (t === token) $('p-sub').textContent = `Couldn’t build parlays (${err.message}).`;
+      return;
+    }
     if (t !== token) return;
     const openLegs = legs.filter((l) => l.g.roof === 'open');
     const openGames = upcoming.filter((g) => g.roof === 'open').length;
