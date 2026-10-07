@@ -1,5 +1,5 @@
 // Service worker: lets the installed app open without the local server, and shows the last weather seen when offline.
-const SHELL_CACHE = 'gameday-shell-v43';
+const SHELL_CACHE = 'gameday-shell-v44';
 const DATA_CACHE = 'weather-data-v1';
 const SHELL_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
@@ -51,10 +51,16 @@ async function shell(request) {
 }
 
 // Weather data: always try the network first so numbers are fresh, fall back to the last copy.
+// An Open-Meteo 429 is returned as-is so the page can back off and retry. Substituting a saved
+// copy there used to hide the 429, and the page would treat that old forecast as a fresh download.
 async function weather(request) {
   const cache = await caches.open(DATA_CACHE);
   try {
     const res = await fetch(request);
+    // Only Open-Meteo is retried with backoff by the page. Other hosts (ESPN, Polymarket)
+    // have no retry, so a 429 there still falls back to the saved copy.
+    const meteo429 = res.status === 429 && ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'historical-forecast-api.open-meteo.com'].includes(new URL(request.url).hostname);
+    if (meteo429) return res;
     if (!res.ok) return (await cache.match(dataKey(request.url))) || res;
     await cache.put(dataKey(request.url), res.clone()).catch(() => {});
     return res;

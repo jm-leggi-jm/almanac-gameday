@@ -258,6 +258,7 @@ td { border-bottom: 1px solid var(--grid); padding: 8px; vertical-align: top; }
   .span-2 { grid-column: auto; }
   .loc { flex-basis: 100%; }
   h1 { font-size: 26px; }
+  input, select, textarea { font-size: 16px; }
 }
 
 /* DAKboard display setup */
@@ -283,7 +284,7 @@ td { border-bottom: 1px solid var(--grid); padding: 8px; vertical-align: top; }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Game day weather */
-.gd-controls { display: flex; align-items: center; gap: 8px; }
+.gd-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .gd-sub { margin: -4px 0 12px; }
 /* Every card is the same 10 rows (header, venue, now, hours, impact, confidence, odds bars, lines,
    result, radar). Cards in the same grid row share those row heights through subgrid, so each
@@ -410,7 +411,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: grid; gap: 16px; align-items: start;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, max(300px, (100% - 3 * 16px) / 4)), 1fr));
 }
-.parlay { border: 1px solid var(--grid); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.parlay { border: 1px solid var(--grid); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; container-type: inline-size; }
 .p-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .p-head h3 { margin: 0; font-size: 16px; }
 .p-total { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -427,8 +428,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .p-pick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-odds, .p-prob { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .p-prob { font-weight: 700; min-width: 36px; text-align: right; }
+/* A phone-width card can't fit player, pick, price and chance on one line. */
+@container (max-width: 460px) {
+  .p-leg-top {
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    grid-template-areas: "n game prob" "n pick odds";
+  }
+  .p-leg-top::before { grid-area: n; }
+  .p-game { grid-area: game; white-space: normal; }
+  .p-pick { grid-area: pick; white-space: normal; overflow: visible; text-overflow: unset; }
+  .p-odds { grid-area: odds; justify-self: end; }
+  .p-prob { grid-area: prob; }
+}
 .p-why { font-size: 11.5px; color: var(--muted); margin: 2px 0 0 22px; }
-.p-group-head { display: flex; align-items: baseline; gap: 10px; margin: 20px 0 10px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.p-group-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 20px 0 10px; padding-top: 14px; border-top: 1px solid var(--grid); }
 .p-group-head.first { border-top: 0; padding-top: 0; margin-top: 4px; }
 .p-group-head h3 { margin: 0; font-size: 15px; }
 .p-roof { font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 999px; background: var(--neutral); color: var(--text-1); margin-left: 4px; }
@@ -466,7 +479,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .banner .seg button + button { border-left-color: rgba(255, 255, 255, 0.7); border-top-color: rgba(255, 255, 255, 0.7); }
 .banner .seg button[aria-pressed="true"] { background: #fff; color: #1f4d2b; }
 .banner .top-link { color: #fff; border-color: rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.25); }
-.p-subgroup { display: flex; align-items: baseline; gap: 10px; margin: 18px 0 8px; }
+.p-subgroup { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 18px 0 8px; }
 .p-subgroup h4 { margin: 0; font-size: 14px; }
 /* Soft shade behind the title so it reads over the yard lines. */
 .top.banner::before {
@@ -582,3 +595,17 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Radar folded away when the game's weather risk is low */
 .gd-radar-fold summary .muted { font-weight: 400; }
 .gd-radar-fold-body { padding: 8px 10px 10px; }
+
+/* Phone layout. Kept last so it wins over the desktop tracker, team grid and icon buttons above. */
+@media (max-width: 760px) {
+  .layout { flex-direction: column; }
+  /* Beside the games, a 250px tracker leaves the cards a sliver wide. Stack it on top, full width. */
+  .tracker {
+    order: -1; flex: none; align-self: stretch; width: auto;
+    position: sticky; top: 0; z-index: 5;
+    margin: 0 12px 12px; max-height: 42vh;
+  }
+  .gd-team-list { grid-template-columns: minmax(0, 1fr); }
+  .trk-btn, .gd-collapse { width: 36px; height: 36px; }
+  .trk-x { min-width: 36px; min-height: 36px; }
+}

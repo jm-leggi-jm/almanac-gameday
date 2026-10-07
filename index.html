@@ -161,6 +161,13 @@
       <div class="card-head"><h2 id="cl-title">Change log</h2></div>
       <p class="muted small gd-sub">What's changed in Almanac Game Day, newest first. Times are Central.</p>
       <div class="cl">
+        <h3>October 7, 2026</h3>
+        <h4>11:24 AM CT</h4>
+        <ul>
+          <li><b>Weather requests:</b> stadium forecasts are still one download per venue, reused for 30 minutes. Starts are spaced out with a short random pause, and a “too many requests” reply now waits (a little jitter, and at least as long as the server asks) before trying again. The offline cache no longer hides that reply, so the wait actually happens. A damaged saved forecast is fetched again instead of breaking the card.</li>
+          <li><b>Phones:</b> the tracker sits above the games instead of squeezing them into a sliver. The team picker is one column, parlay legs wrap so the pick isn’t cut off, and the search box uses a larger type size so phones don’t zoom in on it.</li>
+          <li><b>When something fails:</b> the tracker says “Update failed, retrying…” instead of leaving the old time up. Prop parlays say how many lookups failed. A Polymarket link keeps the address the site meant even if the slug contains odd characters. A missing card section no longer stops the rest of the card from filling in.</li>
+        </ul>
         <h3>October 1, 2026</h3>
         <h4>Evening</h4>
         <ul>
