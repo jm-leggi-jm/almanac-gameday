@@ -600,8 +600,9 @@ const Football = (() => {
   // American odds buried in an object, without assuming one field name. A number counts only when
   // its key (or its parent key, for `{american:{value:"-120"}}`) looks like a price, does not end
   // in "id", and is ≤ −100 or ≥ +100 with a magnitude of at most 10,000 (EVEN counts as +100).
-  // A nested read such as `{odds:{american:"-120"}}` is recorded once. Every price field on that
-  // object is marked seen, so `{odds:{value:-110, american:-110}}` is not counted twice.
+  // A nested read such as `{odds:{american:"-120"}}` is recorded once. A repeat of that same
+  // price is marked seen. A different price is left for the walk, and a field named over or
+  // under is left for the walk so it keeps its side.
   const MAX_AMERICAN_ODDS = 10000;
   function americanOddsIn(root) {
     const found = [];
@@ -644,22 +645,24 @@ const Football = (() => {
         };
         if (priceKey(k) && (typeof v === 'string' || typeof v === 'number')) take(asAmerican(v));
         else if (v && typeof v === 'object') {
-          // `{american:{value:"-120"}}` and `{odds:{value:-110, american:-110}}`: the price key is
-          // the parent. Record the first real price, then mark every price field on this object
-          // seen so the walk below does not count those same numbers again.
+          // `{american:{value:"-120"}}`: the price key is the parent. Record the first real price.
+          // Skip over/under names so the walk keeps their sides. Mark a field seen only when it
+          // repeats that recorded price; a different number is left for the walk.
           if (priceKey(k) && !Array.isArray(v)) {
             const preferred = ['value', 'odds', 'american', 'price', 'americanOdds'];
             const innerKeys = preferred.concat(Object.keys(v).filter((ik) => priceKey(ik) && !preferred.includes(ik)));
-            let recorded = false;
+            let firstN = null;
             for (const innerKey of innerKeys) {
+              if (sideOf(`${p}.${innerKey}`)) continue;
               const raw = v[innerKey];
               if (typeof raw !== 'string' && typeof raw !== 'number') continue;
               const n = asAmerican(raw);
               if (n == null) continue;
-              if (!recorded) {
+              if (firstN == null) {
                 take(n);
-                recorded = true;
+                firstN = n;
               }
+              if (n !== firstN) continue;
               seen.add(`${p}.${innerKey}:${n}`);
             }
           }
