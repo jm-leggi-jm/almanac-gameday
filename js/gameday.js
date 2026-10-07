@@ -119,7 +119,7 @@
     const temps = Math.round(w.tempStart) === Math.round(w.tempEnd)
       ? `${Math.round(w.tempStart)}°` : `${Math.round(w.tempStart)}° → ${Math.round(w.tempEnd)}°`;
     const past = g.state === 'post';
-    const indoors = g.roof === 'dome' || g.roof === 'canopy';
+    const indoors = g.roof === 'dome' || g.roof === 'canopy' || g.roof === 'retractable';
     const days = Math.max(0, (g.kickoff - Date.now()) / 86400000);
     const conf = past || g.state === 'in' ? null : Football.confidence(days);
     return {
@@ -128,7 +128,7 @@
           <div class="gd-big"><strong>${temps}</strong><span>${esc(w.condition)}${indoors ? ' <em>(outside)</em>' : ''}</span></div>
           <dl class="gd-facts">
             <div><dt>Feels like</dt><dd>${Math.round(w.feelsMin)}°${Math.round(w.feelsMax) !== Math.round(w.feelsMin) ? `–${Math.round(w.feelsMax)}°` : ''}</dd></div>
-            <div><dt>${past ? 'Precip' : 'Rain chance'}</dt><dd>${past ? `${w.precip.toFixed(2)}″` : `${Math.round(w.popMax)}%`}</dd></div>
+            <div><dt>${past ? 'Rain' : 'Rain chance'}</dt><dd>${past ? (w.rain == null ? '—' : `${w.rain.toFixed(2)}″`) : (Number.isFinite(w.popMax) ? `${Math.round(w.popMax)}%` : '—')}</dd></div>
             <div><dt>Wind</dt><dd>${esc(w.windDir)} ${Math.round(w.windMax)} mph</dd></div>
             <div><dt>Gusts</dt><dd>${Math.round(w.gustMax)} mph</dd></div>
           </dl>
@@ -136,13 +136,10 @@
       hours: `<div class="gd-hours">${w.hours.map(hourCell).join('')}</div>`,
       impact: `
         <div class="gd-impact impact-${imp.level}">
-          <span class="gd-impact-label">${IMPACT_ICON[imp.level]} ${past ? 'Weather impact was' : 'Weather impact'}: <b>${imp.label}</b>${g.roof === 'retractable' ? ' <span class="muted">(if the roof is open)</span>' : ''}</span>
+          <span class="gd-impact-label">${IMPACT_ICON[imp.level]} ${past ? 'Weather impact was' : 'Weather impact'}: <b>${imp.label}</b></span>
           <span class="gd-reasons">${imp.reasons.map(esc).join(' · ')}</span>
         </div>`,
-      conf: [
-        conf ? `<p class="gd-conf">Forecast confidence: <b>${conf.label}</b> — ${esc(conf.note)}</p>` : '',
-        g.roof === 'retractable' ? '<p class="gd-conf">Retractable roof: the team usually decides on game day, and tends to close it for rain, cold or heat.</p>' : '',
-      ].join(''),
+      conf: conf ? `<p class="gd-conf">Forecast confidence: <b>${conf.label}</b> — ${esc(conf.note)}</p>` : '',
     };
   }
 
@@ -206,6 +203,7 @@
         m.pregame ? 'last price before kickoff' : '',
         m.thin && !m.pregame ? '<span class="gd-thin">thin market</span>' : '',
         `${money(m.volume)} traded`,
+        m.liquidity != null ? `${money(m.liquidity)} available` : '',
         `<a href="${esc(m.url)}" target="_blank" rel="noopener">view ↗</a>`,
       ].filter(Boolean).join(' · ');
       rows.push(probRow(g, 'Polymarket', m.away, m.home, note, m.thin && !m.pregame));
