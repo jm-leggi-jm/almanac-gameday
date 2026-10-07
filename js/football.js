@@ -601,8 +601,8 @@ const Football = (() => {
   // its key (or its parent key, for `{american:{value:"-120"}}`) looks like a price, does not end
   // in "id", and is ≤ −100 or ≥ +100 with a magnitude of at most 10,000 (EVEN counts as +100).
   // A nested read such as `{odds:{american:"-120"}}` is recorded once. A repeat of that same
-  // price is marked seen. A different price is left for the walk, and a field named over or
-  // under is left for the walk so it keeps its side.
+  // price is marked seen. A different price is left for the walk. A plain over or under number
+  // is recorded at its own path with that side, and a sideless copy of the same price is dropped.
   const MAX_AMERICAN_ODDS = 10000;
   function americanOddsIn(root) {
     const found = [];
@@ -617,6 +617,12 @@ const Football = (() => {
       if (!t) return null;
       const n = t === 'EVEN' || t === 'EV' ? 100 : Number(t);
       return Number.isFinite(n) && (n <= -100 || n >= 100) && Math.abs(n) <= MAX_AMERICAN_ODDS ? n : null;
+    };
+    // A bare -115, or the string "-115". Not an object, and not a word such as EVEN.
+    const plainNumber = (raw) => {
+      if (typeof raw === 'number') return Number.isFinite(raw);
+      if (typeof raw !== 'string') return false;
+      return /^[+-]?\d+(\.\d+)?$/.test(raw.trim().replace(/[−–]/g, '-'));
     };
     const sideOf = (path) => {
       const parts = path.split(/[.[\]]/).filter(Boolean);
@@ -646,9 +652,21 @@ const Football = (() => {
         if (priceKey(k) && (typeof v === 'string' || typeof v === 'number')) take(asAmerican(v));
         else if (v && typeof v === 'object') {
           // `{american:{value:"-120"}}`: the price key is the parent. Record the first real price.
-          // Skip over/under names so the walk keeps their sides. Mark a field seen only when it
-          // repeats that recorded price; a different number is left for the walk.
+          // Bare `over` / `under` are not price keys, so the walk would skip them. Record a plain
+          // number or numeric string at `${p}.${innerKey}` with its side. The seen mark is the one
+          // take() uses, so the same path and price are not counted twice. A sideless copy of a
+          // price that already has a side is not recorded.
           if (priceKey(k) && !Array.isArray(v)) {
+            for (const [innerKey, raw] of Object.entries(v)) {
+              const child = `${p}.${innerKey}`;
+              if (!sideOf(child) || !plainNumber(raw)) continue;
+              const n = asAmerican(raw);
+              if (n == null) continue;
+              const mark = `${child}:${n}`;
+              if (seen.has(mark)) continue;
+              seen.add(mark);
+              found.push({ path: child, odds: n, side: sideOf(child) });
+            }
             const preferred = ['value', 'odds', 'american', 'price', 'americanOdds'];
             const innerKeys = preferred.concat(Object.keys(v).filter((ik) => priceKey(ik) && !preferred.includes(ik)));
             let firstN = null;
@@ -658,6 +676,11 @@ const Football = (() => {
               if (typeof raw !== 'string' && typeof raw !== 'number') continue;
               const n = asAmerican(raw);
               if (n == null) continue;
+              if (found.some((h) => h.odds === n && h.side)) {
+                seen.add(`${p}.${innerKey}:${n}`);
+                if (firstN == null) firstN = n;
+                continue;
+              }
               if (firstN == null) {
                 take(n);
                 firstN = n;
