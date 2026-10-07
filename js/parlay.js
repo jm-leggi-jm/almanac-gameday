@@ -56,11 +56,12 @@
     return rows;
   }
 
-  function blendDetail(rows, poly, usePoly, market, pickPositive) {
+  // `skip` is why Polymarket was left out, or null when it was used or there is no market.
+  function blendDetail(rows, poly, usePoly, skip, pickPositive) {
     const side = (p) => (pickPositive ? p : 1 - p);
     const parts = rows.map((r) => `${r.name} ${Math.round(side(r.p) * 100)}%`);
     if (usePoly) parts.push(`Polymarket ${Math.round(side(poly) * 100)}%`);
-    else if (market && market.thin) parts.push('Polymarket left out (thin market)');
+    else if (skip) parts.push(`Polymarket left out (${skip})`);
     const blended = Football.blendFair(Football.combineFair(rows.map((r) => r.p)), poly, usePoly);
     if (blended != null) parts.push(`blend ${Math.round(side(blended) * 100)}%`);
     return parts.join(' · ');
@@ -76,6 +77,7 @@
     if (!posted) return null;
     const usePoly = !!(m && !m.thin && m.home + m.away > 0);
     const polyHome = usePoly ? m.home / (m.home + m.away) : null;
+    const skip = usePoly || !m || !m.thin ? null : 'thin market';
     const home = Football.blendFair(Football.combineFair(rows.map((r) => r.p)), polyHome, usePoly);
     if (home == null) return null;
     const pickHome = home >= 0.5;
@@ -97,8 +99,8 @@
       otherOdds: pickHome ? posted.mlAway : posted.mlHome,
       prob: pickHome ? home : 1 - home,
       favored: home !== 0.5,
-      detail: blendDetail(rows, polyHome, usePoly, m, pickHome),
-      otherDetail: blendDetail(rows, polyHome, usePoly, m, !pickHome),
+      detail: blendDetail(rows, polyHome, usePoly, skip, pickHome),
+      otherDetail: blendDetail(rows, polyHome, usePoly, skip, !pickHome),
       signals: signalsFor(pickHome),
       otherSignals: signalsFor(!pickHome),
       weather: [],
@@ -141,7 +143,7 @@
     const lo = sorted[0];
     const hi = sorted[sorted.length - 1];
     const gap = Math.round((hi.p - lo.p) * 100);
-    if (gap <= 5) return { tone: 'good', text: `✓ Sources agree (within ${gap} pts)`, tip: 'ESPN, Polymarket and DraftKings are close on this outcome.' };
+    if (gap <= 5) return { tone: 'good', text: `✓ Sources agree (within ${gap} pts)`, tip: 'The sportsbook prices and Polymarket are close on this outcome.' };
     if (gap <= 12) return { tone: 'neutral', text: `≈ Sources differ by ${gap} pts`, tip: `${hi.name} ${Math.round(hi.p * 100)}% vs ${lo.name} ${Math.round(lo.p * 100)}%.` };
     return { tone: 'bad', text: `✗ Sources disagree: ${hi.name} ${Math.round(hi.p * 100)}% vs ${lo.name} ${Math.round(lo.p * 100)}%`, tip: 'A wide split means the outcome is less settled than the average suggests.' };
   }
@@ -174,9 +176,15 @@
       const fair = Football.impliedFromMoneylines(b.overOdds, b.underOdds);   // "home" = over
       return fair ? fair.home / 100 : null;
     });
-    // m.total is set only when that total market itself has real volume (and liquidity, if posted).
-    const usePoly = !!(m && m.total && m.total.line === posted.total);
-    const polyOver = usePoly ? m.total.over / 100 : null;
+    // Every qualifying total is kept. Match the book's number; a busier line at a different total is a different bet.
+    const match = m && (m.totals || []).find((t) => t.line === posted.total);
+    const usePoly = !!match;
+    const polyOver = usePoly ? match.over / 100 : null;
+    let skip = null;
+    if (!usePoly && m) {
+      const thinHit = (m.thinTotals || []).some((t) => t.line === posted.total);
+      skip = thinHit ? 'thin total' : 'no total at this line';
+    }
     const over = Football.blendFair(Football.combineFair(rows.map((r) => r.p)), polyOver, usePoly);
     if (over == null) return null;
     const pickOver = over >= 0.5;
@@ -198,8 +206,8 @@
       otherOdds: pickOver ? posted.underOdds : posted.overOdds,
       prob: pickOver ? over : 1 - over,
       favored: over !== 0.5,
-      detail: blendDetail(rows, polyOver, usePoly, usePoly ? null : m, pickOver),
-      otherDetail: blendDetail(rows, polyOver, usePoly, usePoly ? null : m, !pickOver),
+      detail: blendDetail(rows, polyOver, usePoly, skip, pickOver),
+      otherDetail: blendDetail(rows, polyOver, usePoly, skip, !pickOver),
       signals: signalsFor(pickOver),
       otherSignals: signalsFor(!pickOver),
       weather: [],

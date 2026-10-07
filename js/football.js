@@ -391,6 +391,7 @@ const Football = (() => {
       tempStart: hours[0].temp, tempEnd: hours[hours.length - 1].temp,
       feelsMin: min('feels'), feelsMax: max('feels'),
       popMax: max('pop'),
+      tempMin: min('temp'),
       rain: (Array.isArray(h.rain) || Array.isArray(h.showers)) ? sum('rain') + sum('showers') : null,
       snow: sum('snow'),
       windMax: max('wind'), gustMax: max('gust'), windDir: compass(hours[0].dir || 0),
@@ -430,8 +431,9 @@ const Football = (() => {
     }
     if (w.windMax >= 20 || w.gustMax >= 35) add(3, `Strong wind (${Math.round(w.windMax)} mph, gusts ${Math.round(w.gustMax)}): passing and kicking`);
     else if (w.windMax >= 15 || w.gustMax >= 25) add(2, `Wind (${Math.round(w.windMax)} mph, gusts ${Math.round(w.gustMax)}): passing and kicking`);
+    const airMin = Number.isFinite(w.tempMin) ? w.tempMin : null;
     if (w.feelsMin <= 10) add(3, `Bitter cold (feels ${Math.round(w.feelsMin)}°)`);
-    else if (w.feelsMin < 20) add(2, `Below 20°F (feels ${Math.round(w.feelsMin)}°)`);
+    else if (airMin != null && airMin < 20) add(2, `Below 20°F (${Math.round(airMin)}°)`);
     else if (w.feelsMin <= 32) add(2, `Cold (feels ${Math.round(w.feelsMin)}°)`);
     if (w.feelsMax >= 95) add(3, `Heat (feels ${Math.round(w.feelsMax)}°)`);
     else if (w.feelsMax >= 88) add(2, `Hot (feels ${Math.round(w.feelsMax)}°)`);
@@ -495,6 +497,7 @@ const Football = (() => {
     const homeLine = num(ps.home && ps.home.close && ps.home.close.line) ?? (p.spread != null ? p.spread : null);
     return {
       provider: (p.provider && (p.provider.displayName || p.provider.name)) || 'Sportsbook',
+      providerId: p.provider && p.provider.id != null && p.provider.id !== '' ? String(p.provider.id) : '',
       homeLine,
       homeOpen: num(ps.home && ps.home.open && ps.home.open.line),
       homeSpreadOdds: (ps.home && ps.home.close && ps.home.close.odds) || null,
@@ -524,13 +527,13 @@ const Football = (() => {
       const home = wp[0].homeWinPercentage * 100;
       win = { home, away: 100 - home - (wp[0].tiePercentage || 0) * 100, pregame: true };
     }
-    // One row per sportsbook. ESPN's pickcenter odds are DraftKings (provider 100), the same
-    // book the cards already call the book feed, so a repeated provider name is dropped.
+    // One row per sportsbook. ESPN's pickcenter odds are DraftKings (provider id 100), the same
+    // book the cards already call the book feed, so a repeated provider id is dropped.
     const books = [];
     const seenProviders = new Set();
     for (const pick of summary.pickcenter || []) {
       const row = linesFromPick(pick);
-      const key = row.provider.trim().toLowerCase();
+      const key = row.providerId || `name:${row.provider.trim().toLowerCase()}`;
       if (seenProviders.has(key)) continue;
       seenProviders.add(key);
       books.push(row);
@@ -594,19 +597,23 @@ const Football = (() => {
     return { home, away, tie, showTie: tie >= 1 };
   }
 
-  // American odds buried in an object, without assuming a field name. A number counts only when
-  // its key looks like a price and the value is ≤ −100 or ≥ +100 (EVEN counts as +100).
+  // American odds buried in an object, without assuming one field name. A number counts only when
+  // its key (or its parent key, for `{american:{value:"-120"}}`) looks like a price, does not end
+  // in "id", and is ≤ −100 or ≥ +100 with a magnitude of at most 10,000 (EVEN counts as +100).
+  const MAX_AMERICAN_ODDS = 10000;
   function americanOddsIn(root) {
     const found = [];
     const seen = new Set();
-    const priceKey = (k) => /american|odds|price|moneyline/i.test(k) && !/display/i.test(k);
+    const priceKey = (k) => /american|odds|price|moneyline/i.test(k) && !/display/i.test(k) && !/id$/i.test(k);
     const asAmerican = (v) => {
-      if (typeof v === 'number') return Number.isFinite(v) && (v <= -100 || v >= 100) ? v : null;
+      if (typeof v === 'number') {
+        return Number.isFinite(v) && (v <= -100 || v >= 100) && Math.abs(v) <= MAX_AMERICAN_ODDS ? v : null;
+      }
       if (typeof v !== 'string') return null;
       const t = v.trim().replace(/[−–]/g, '-').toUpperCase();
       if (!t) return null;
       const n = t === 'EVEN' || t === 'EV' ? 100 : Number(t);
-      return Number.isFinite(n) && (n <= -100 || n >= 100) ? n : null;
+      return Number.isFinite(n) && (n <= -100 || n >= 100) && Math.abs(n) <= MAX_AMERICAN_ODDS ? n : null;
     };
     const sideOf = (path) => {
       const parts = path.split(/[.[\]]/).filter(Boolean);
@@ -627,14 +634,21 @@ const Football = (() => {
       for (const [k, v] of Object.entries(obj)) {
         if (k === '$ref' || k === 'lastUpdated') continue;
         const p = path ? `${path}.${k}` : k;
-        if (priceKey(k) && (typeof v === 'string' || typeof v === 'number')) {
-          const odds = asAmerican(v);
+        const take = (odds) => {
           const mark = `${p}:${odds}`;
-          if (odds != null && !seen.has(mark)) {
-            seen.add(mark);
-            found.push({ path: p, odds, side: sideOf(p) });
+          if (odds == null || seen.has(mark)) return;
+          seen.add(mark);
+          found.push({ path: p, odds, side: sideOf(p) });
+        };
+        if (priceKey(k) && (typeof v === 'string' || typeof v === 'number')) take(asAmerican(v));
+        else if (v && typeof v === 'object') {
+          // `{american:{value:"-120"}}`: the price key is the parent, the number sits on `value`.
+          if (priceKey(k) && !Array.isArray(v)) {
+            const inner = v.value ?? v.odds ?? v.american ?? v.price ?? v.americanOdds;
+            if (typeof inner === 'string' || typeof inner === 'number') take(asAmerican(inner));
           }
-        } else if (v && typeof v === 'object') walk(v, p, depth + 1);
+          walk(v, p, depth + 1);
+        }
       }
     }
     walk(root, '', 0);
@@ -658,7 +672,12 @@ const Football = (() => {
   const PM = 'https://gamma-api.polymarket.com';
   const PM_CLOB = 'https://clob.polymarket.com';
   const PM_ABBR = { LAR: 'la', WSH: 'was' };      // where Polymarket's team codes differ from ESPN's
-  const THIN_MARKET_USD = 1000;                   // below this much traded, prices mean little
+  // Moneyline: today's books run from about $5k to $131k traded, with much more sitting available.
+  // Each total line is thinner, so its floor is lower. A missing liquidity figure does not skip the market.
+  const ML_MIN_VOLUME = 10000;
+  const ML_MIN_LIQUIDITY = 10000;
+  const TOTAL_MIN_VOLUME = 2500;
+  const TOTAL_MIN_LIQUIDITY = 5000;
   const marketCache = new Map();
 
   const pmCode = (abbr) => PM_ABBR[abbr] || abbr.toLowerCase();
@@ -685,45 +704,56 @@ const Football = (() => {
     let hi = outcomes.findIndex((o) => matches(o, g.home));
     let ai = outcomes.findIndex((o) => matches(o, g.away));
     if (hi < 0 || ai < 0) { ai = 0; hi = 1; }       // Polymarket orders away team first
+    // Number(null) and Number('') are 0, which would look like a real zero. Skip those.
     const moneyOf = (...vals) => {
       for (const v of vals) {
+        if (v == null || v === '') continue;
         const n = Number(v);
         if (Number.isFinite(n)) return n;
       }
       return null;
     };
-    // Real interest: traded volume, and liquidity when the payload has that field.
-    // A missing liquidity figure does not by itself make the market thin.
     const volume = moneyOf(ml.volumeNum, ml.volume) ?? 0;
     const liquidity = moneyOf(ml.liquidityNum, ml.liquidity, ml.liquidityClob);
-    const traded = (vol, liq) => vol >= THIN_MARKET_USD && (liq == null || liq >= THIN_MARKET_USD);
-    const totals = markets.filter((m) => m.sportsMarketType === 'totals' && traded(moneyOf(m.volumeNum, m.volume) ?? 0, moneyOf(m.liquidityNum, m.liquidity, m.liquidityClob)))
-      .sort((a, b) => (moneyOf(b.volumeNum, b.volume) ?? 0) - (moneyOf(a.volumeNum, a.volume) ?? 0))[0];
-    let total = null;
-    if (totals) {
-      const line = num((totals.question.match(/O\/U\s*([\d.]+)/) || [])[1]);
-      const tp = JSON.parse(totals.outcomePrices || '[]').map(Number);
-      const to = JSON.parse(totals.outcomes || '[]');
+    const moneylineThin = volume < ML_MIN_VOLUME || (liquidity != null && liquidity < ML_MIN_LIQUIDITY);
+    // Every total line, not just the busiest one. A book can move to a quieter line that still qualifies.
+    const byLine = new Map();
+    for (const mkt of markets) {
+      if (mkt.sportsMarketType !== 'totals') continue;
+      const line = num(((mkt.question || '').match(/O\/U\s*([\d.]+)/) || [])[1]);
+      let to = [];
+      let tp = [];
+      try {
+        to = JSON.parse(mkt.outcomes || '[]');
+        tp = JSON.parse(mkt.outcomePrices || '[]').map(Number);
+      } catch { continue; }
       const oi = to.findIndex((x) => /^over$/i.test(String(x)));
       const ui = to.findIndex((x) => /^under$/i.test(String(x)));
-      const over = tp[oi];
-      const under = tp[ui];
-      // Same treatment as the moneyline: divide the two sides. Not sportsbook vig math.
-      if (line != null && over > 0 && under > 0) {
-        total = { line, over: (over / (over + under)) * 100, volume: moneyOf(totals.volumeNum, totals.volume) ?? 0 };
-      }
+      const overPx = tp[oi];
+      const underPx = tp[ui];
+      if (line == null || !(overPx > 0) || !(underPx > 0)) continue;
+      const vol = moneyOf(mkt.volumeNum, mkt.volume) ?? 0;
+      const liq = moneyOf(mkt.liquidityNum, mkt.liquidity, mkt.liquidityClob);
+      const thin = vol < TOTAL_MIN_VOLUME || (liq != null && liq < TOTAL_MIN_LIQUIDITY);
+      const row = { line, over: (overPx / (overPx + underPx)) * 100, volume: vol, thin };
+      const prev = byLine.get(line);
+      if (!prev || row.volume > prev.volume) byLine.set(line, row);
     }
+    const parsedTotals = [...byLine.values()];
+    const totals = parsedTotals.filter((t) => !t.thin).map(({ line, over, volume: vol }) => ({ line, over, volume: vol }));
+    const thinTotals = parsedTotals.filter((t) => t.thin).map(({ line, over, volume: vol }) => ({ line, over, volume: vol }));
+    const total = totals.slice().sort((a, b) => b.volume - a.volume)[0] || null;
     const out = {
       url: `https://polymarket.com/event/${encodeURIComponent(event.slug || '')}`,
       closed: !!ml.closed,
       home: prices[hi] * 100, away: prices[ai] * 100,
-      volume, liquidity, thin: !traded(volume, liquidity), total,
+      volume, liquidity, thin: moneylineThin, total, totals, thinTotals,
     };
     if (g.state !== 'pre') {
       const tokens = JSON.parse(ml.clobTokenIds || '[]');
       const homePre = tokens[hi] ? await pregamePrice(tokens[hi], g.kickoff).catch(() => null) : null;
       if (homePre == null) return null;
-      Object.assign(out, { home: homePre * 100, away: (1 - homePre) * 100, pregame: true, total: null });
+      Object.assign(out, { home: homePre * 100, away: (1 - homePre) * 100, pregame: true, total: null, totals: [], thinTotals: [] });
     }
     return out;
   }

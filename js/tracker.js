@@ -93,7 +93,8 @@ const Tracker = (() => {
     if (s && s.homeWin != null) {
       const shares = Football.winShares(s.homeWin, s.tie);
       const h = Math.round(shares.home);
-      const a = Math.round(shares.away);
+      // A hidden tie is folded into the away share so the two numbers add to 100.
+      const a = shares.showTie ? Math.round(shares.away) : 100 - h;
       const t = Math.round(shares.tie);
       const tieSeg = shares.showTie ? `<span class="tie" style="width:${shares.tie}%"></span>` : '';
       const awayW = shares.showTie ? shares.away : shares.away + shares.tie;
