@@ -600,8 +600,8 @@ const Football = (() => {
   // American odds buried in an object, without assuming one field name. A number counts only when
   // its key (or its parent key, for `{american:{value:"-120"}}`) looks like a price, does not end
   // in "id", and is ≤ −100 or ≥ +100 with a magnitude of at most 10,000 (EVEN counts as +100).
-  // A nested read such as `{odds:{american:"-120"}}` is recorded once. The inner field is marked
-  // seen so the walk does not count that same price again.
+  // A nested read such as `{odds:{american:"-120"}}` is recorded once. Every price field on that
+  // object is marked seen, so `{odds:{value:-110, american:-110}}` is not counted twice.
   const MAX_AMERICAN_ODDS = 10000;
   function americanOddsIn(root) {
     const found = [];
@@ -644,15 +644,23 @@ const Football = (() => {
         };
         if (priceKey(k) && (typeof v === 'string' || typeof v === 'number')) take(asAmerican(v));
         else if (v && typeof v === 'object') {
-          // `{american:{value:"-120"}}` and `{odds:{american:"-120"}}`: the price key is the parent.
-          // Mark `${p}.${innerKey}` seen so the walk below does not record that same price again.
+          // `{american:{value:"-120"}}` and `{odds:{value:-110, american:-110}}`: the price key is
+          // the parent. Record the first real price, then mark every price field on this object
+          // seen so the walk below does not count those same numbers again.
           if (priceKey(k) && !Array.isArray(v)) {
-            const innerKeys = ['value', 'odds', 'american', 'price', 'americanOdds'];
-            const innerKey = innerKeys.find((ik) => typeof v[ik] === 'string' || typeof v[ik] === 'number');
-            if (innerKey) {
-              const n = asAmerican(v[innerKey]);
-              take(n);
-              if (n != null) seen.add(`${p}.${innerKey}:${n}`);
+            const preferred = ['value', 'odds', 'american', 'price', 'americanOdds'];
+            const innerKeys = preferred.concat(Object.keys(v).filter((ik) => priceKey(ik) && !preferred.includes(ik)));
+            let recorded = false;
+            for (const innerKey of innerKeys) {
+              const raw = v[innerKey];
+              if (typeof raw !== 'string' && typeof raw !== 'number') continue;
+              const n = asAmerican(raw);
+              if (n == null) continue;
+              if (!recorded) {
+                take(n);
+                recorded = true;
+              }
+              seen.add(`${p}.${innerKey}:${n}`);
             }
           }
           walk(v, p, depth + 1);
