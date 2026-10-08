@@ -164,6 +164,10 @@
       <p class="muted small gd-sub">What's changed in Almanac Game Day, newest first. Times are Central.</p>
       <div class="cl">
         <h3>October 7, 2026</h3>
+        <h4>9:27 PM CT</h4>
+        <ul>
+          <li><b>Prop prices:</b> both vig-check bounds are now truly inclusive (1e-9 tolerance), so a bare −400/+150 pair, which sums to exactly 1.20, is kept. A lone bare side also counts when it is the explicit string "+100" (like EVEN); a bare 100 or "100" is still rejected because 100-yard lines are real. A bare pair where both sides are unsigned positives (100/100, 101/101) is dropped, while "+100"/"+100", EVEN/EVEN and mixed pairs such as −120/100 still pass.</li>
+        </ul>
         <h4>9:18 PM CT</h4>
         <ul>
           <li><b>Prop prices:</b> overUnderOdds names the market, not a side, so it is kept as an unsided price like american. A side comes only from an exact over/under key, a field under one, or a side-prefixed key such as overOdds/underOdds, with a capital letter after over/under (so overtimeOdds, overallOdds and underdogOdds stay unsided). A bare over/under pair is kept only when the implied probabilities sum to 0.99–1.20 (250/250 and 250/260 both fail, so the prop falls back to assumed −110); a lone bare side is kept only when negative or EVEN/EV.</li>

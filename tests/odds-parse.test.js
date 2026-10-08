@@ -94,6 +94,16 @@ const overStill = check('{odds:{overOdds:150}} still over', { odds: { overOdds: 
 assert('overOdds still over', overStill.length === 1 && overStill[0].side === 'over');
 const underStill = check('{odds:{underOdds:-110}}', { odds: { underOdds: -110 } }, [-110]);
 assert('underOdds still under', underStill.length === 1 && underStill[0].side === 'under');
+check('{odds:{over:-400, under:150}} sums to exactly 1.20', { odds: { over: -400, under: 150 } }, [-400, 150]);
+const lonePlus100 = check('{odds:{over:"+100"}} lone', { odds: { over: '+100' } }, [100]);
+assert('lone "+100" kept with side over', lonePlus100.length === 1 && lonePlus100[0].side === 'over');
+check('{odds:{over:100}} lone', { odds: { over: 100 } }, []);
+check('{odds:{over:"100"}} lone', { odds: { over: '100' } }, []);
+check('{odds:{over:100, under:100}}', { odds: { over: 100, under: 100 } }, []);
+check('{odds:{over:101, under:101}}', { odds: { over: 101, under: 101 } }, []);
+check('{odds:{over:"+100", under:"+100"}}', { odds: { over: '+100', under: '+100' } }, [100, 100]);
+check('{odds:{over:"EVEN", under:"EVEN"}} pair', { odds: { over: 'EVEN', under: 'EVEN' } }, [100, 100]);
+check('{odds:{over:-120, under:100}} mixed', { odds: { over: -120, under: 100 } }, [-120, 100]);
 const fair = context.Football.impliedFromMoneylines(-115, -105);
 assert('de-vig -115/-105 is 51.1/48.9',
   fair && Math.abs(fair.home - 51.1) < 0.05 && Math.abs(fair.away - 48.9) < 0.05);
