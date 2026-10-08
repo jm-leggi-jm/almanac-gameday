@@ -53,6 +53,19 @@ assert('-115 once, with side over; -105 under', nested.length === 2
   && nested.some((h) => h.odds === -105 && h.side === 'under'));
 check('{odds:{over:"-115", under:"-105", american:"-115"}}', { odds: { over: '-115', under: '-105', american: '-115' } }, [-115, -105]);
 
+check('{odds:{over:245.5, under:245.5}}', { odds: { over: 245.5, under: 245.5 } }, []);
+check('{odds:{over:"265.5"}}', { odds: { over: '265.5' } }, []);
+check('{odds:{overOdds:245.5}}', { odds: { overOdds: 245.5 } }, []);
+check('{over:{odds:{line:250, yards:275, id:300}}}', { over: { odds: { line: 250, yards: 275, id: 300 } } }, []);
+check('{odds:{overUnder:-110}}', { odds: { overUnder: -110 } }, []);
+const sameUnder = check('{odds:{under:-105, underOdds:-105}}', { odds: { under: -105, underOdds: -105 } }, [-105]);
+assert('under -105 once', sameUnder.length === 1 && sameUnder[0].side === 'under' && sameUnder[0].odds === -105);
+check('{a:{odds:{over:-110}}, b:{odds:{american:-110}}}', { a: { odds: { over: -110 } }, b: { odds: { american: -110 } } }, [-110, -110]);
+check('{b:{odds:{american:-110}}, a:{odds:{over:-110}}}', { b: { odds: { american: -110 } }, a: { odds: { over: -110 } } }, [-110, -110]);
+const evenOver = check('{odds:{over:"EVEN"}}', { odds: { over: 'EVEN' } }, [100]);
+assert('+100 over', evenOver.length === 1 && evenOver[0].odds === 100 && evenOver[0].side === 'over');
+check('{odds:{over:"EV"}}', { odds: { over: 'EV' } }, [100]);
+
 if (failed) {
   console.log(`${failed} failed`);
   process.exit(1);
