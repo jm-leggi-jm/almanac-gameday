@@ -634,8 +634,8 @@ const Football = (() => {
     };
     const sideOfPart = (part) => {
       if (/^(over|under)$/i.test(part)) return /^over$/i.test(part) ? 'over' : 'under';
-      if (/^over(?=[A-Z])/i.test(part) && !/^overUnder/i.test(part)) return 'over';
-      if (/^under(?=[A-Z])/i.test(part) && !/^underOver/i.test(part)) return 'under';
+      if (/^[Oo]ver(?=[A-Z])/.test(part) && !/^overUnder/i.test(part)) return 'over';
+      if (/^[Uu]nder(?=[A-Z])/.test(part) && !/^underOver/i.test(part)) return 'under';
       return null;
     };
     const sideOf = (path) => {

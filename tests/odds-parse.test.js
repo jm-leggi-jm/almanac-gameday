@@ -84,6 +84,16 @@ const marketName = check('{odds:{overUnderOdds:-110}}', { odds: { overUnderOdds:
 assert('overUnderOdds is unsided', marketName.length === 1 && marketName[0].side == null);
 const sidedPrice = check('{odds:{overOdds:150}}', { odds: { overOdds: 150 } }, [150]);
 assert('overOdds +150 kept with side over', sidedPrice.length === 1 && sidedPrice[0].side === 'over');
+const overtime = check('{odds:{overtimeOdds:-110}}', { odds: { overtimeOdds: -110 } }, [-110]);
+assert('overtimeOdds is unsided', overtime.length === 1 && overtime[0].side == null);
+const overall = check('{odds:{overallOdds:-110}}', { odds: { overallOdds: -110 } }, [-110]);
+assert('overallOdds is unsided', overall.length === 1 && overall[0].side == null);
+const underdog = check('{odds:{underdogOdds:150}}', { odds: { underdogOdds: 150 } }, [150]);
+assert('underdogOdds is unsided', underdog.length === 1 && underdog[0].side == null);
+const overStill = check('{odds:{overOdds:150}} still over', { odds: { overOdds: 150 } }, [150]);
+assert('overOdds still over', overStill.length === 1 && overStill[0].side === 'over');
+const underStill = check('{odds:{underOdds:-110}}', { odds: { underOdds: -110 } }, [-110]);
+assert('underOdds still under', underStill.length === 1 && underStill[0].side === 'under');
 const fair = context.Football.impliedFromMoneylines(-115, -105);
 assert('de-vig -115/-105 is 51.1/48.9',
   fair && Math.abs(fair.home - 51.1) < 0.05 && Math.abs(fair.away - 48.9) < 0.05);
