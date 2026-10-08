@@ -77,6 +77,7 @@ const Tracker = (() => {
   }
 
   function gameItem(g) {
+    if (!g.home || !g.away) return '';
     const hs = Number(g.home.score);
     const as = Number(g.away.score);
     const started = g.state !== 'pre';
@@ -114,7 +115,7 @@ const Tracker = (() => {
     const list = [...ids].map((id) => games.get(id)).filter(Boolean)
       .sort((a, b) => rank[a.state] - rank[b.state] || a.kickoff - b.kickoff);
     show(list.length > 0);
-    $('trk-list').innerHTML = list.map(gameItem).join('');
+    $('trk-list').innerHTML = list.map(gameItem).filter(Boolean).join('');
     $('trk-updated').textContent = `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`;
   }
 
@@ -128,6 +129,8 @@ const Tracker = (() => {
     try {
       week = await Football.thisWeek();
     } catch {
+      const el = $('trk-updated');
+      if (el) el.textContent = 'Update failed, retrying…';
       timer = setTimeout(refresh, REFRESH_MS);
       return;
     }

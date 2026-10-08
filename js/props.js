@@ -54,7 +54,13 @@
     try { cache = 'caches' in self ? await caches.open(CACHE) : null; } catch { cache = null; }
     if (cache) {
       const hit = await cache.match(url);
-      if (!fresh && hit && Date.now() - Number(hit.headers.get('x-fetched-at')) < TTL_MS) return hit.json();
+      if (!fresh && hit && Date.now() - Number(hit.headers.get('x-fetched-at')) < TTL_MS) {
+        try {
+          return await hit.json();
+        } catch {
+          cache.delete(url).catch(() => {});   // damaged entry: fetch a fresh copy
+        }
+      }
     }
     const res = await slot(() => fetch(url));
     if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
@@ -84,10 +90,12 @@
     return [...seen.values()];
   }
 
+  let requestFailures = 0;   // lookups that failed during the current prop build
+
   // One player's recent games, newest first: [{ [statName]: number }]
   async function recentGames(athleteId, season) {
     const logs = await Promise.all([season, season - 1].map((s) =>
-      cachedJSON(`${WEB}/athletes/${athleteId}/gamelog?season=${s}`).catch(() => null)));
+      cachedJSON(`${WEB}/athletes/${athleteId}/gamelog?season=${s}`).catch(() => { requestFailures++; return null; })));
     const games = [];
     for (const log of logs) {
       if (!log || !log.names) continue;
@@ -107,7 +115,7 @@
   }
 
   async function playerInfo(athleteId) {
-    const d = await cachedJSON(`${SITE}/athletes/${athleteId}`).catch(() => null);
+    const d = await cachedJSON(`${SITE}/athletes/${athleteId}`).catch(() => { requestFailures++; return null; });
     const a = (d && d.athlete) || {};
     return { name: a.displayName || `Player ${athleteId}`, team: (a.team && a.team.abbreviation) || '', pos: (a.position && a.position.abbreviation) || '' };
   }
@@ -130,10 +138,11 @@
     const now = new Date();
     const season = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();   // Jan-Feb games belong to last year's season
     if (fresh) Football.clearOdds();   // injury reports come with the odds summaries
-    const props = (await Promise.all(games.map((g) => gameProps(g, fresh).catch(() => [])))).flat();
+    requestFailures = 0;
+    const props = (await Promise.all(games.map((g) => gameProps(g, fresh).catch(() => { requestFailures++; return []; })))).flat();
     // Injury reports (from the game summaries the game cards already load): player id -> status.
     const injuryById = new Map();
-    const summaries = await Promise.all(games.map((g) => Football.odds(g).catch(() => null)));
+    const summaries = await Promise.all(games.map((g) => Football.odds(g).catch(() => { requestFailures++; return null; })));
     for (const s of summaries) for (const list of Object.values((s && s.injuries) || {})) for (const i of list) injuryById.set(i.id, i.status);
     const athletes = [...new Set(props.map((p) => p.athleteId))];
     const byAthlete = new Map();
@@ -209,7 +218,7 @@
       <li class="p-leg">
         <div class="p-leg-top">
           <span class="p-game">${esc(l.player.name)}</span>
-          <b class="p-pick">${l.side} ${l.line} ${esc(l.type.label)}</b>
+          <b class="p-pick">${esc(l.side)} ${esc(l.line)} ${esc(l.type.label)}</b>
           <span class="p-odds">${MINUS}110*</span>
           <span class="p-prob">${pct(l.prob)}</span>
         </div>
@@ -402,7 +411,8 @@
       const which = startedOver ? `Set 1 again${limit} (not enough unused props were left to fill a full parlay, so this starts over from the top picks)`
         : setNumber === 1 ? `Set 1${limit}${limit ? '' : ': the top picks'}`
         : `Set ${setNumber}${limit}${limit ? '' : ': new picks'}, ${skipped ? `skipping the ${skipped} players shown in earlier sets` : 'no prop repeated from earlier sets (some players return on a different prop)'}`;
-      $('pp-status').textContent = `${which} · ${result.props} props from ${result.games} selected games · ${result.legs.length} with enough history · ${refresh ? 'lines refreshed' : 'updated'} ${updated}`;
+      const fails = requestFailures ? ` · ${requestFailures} request${requestFailures === 1 ? '' : 's'} failed` : '';
+      $('pp-status').textContent = `${which} · ${result.props} props from ${result.games} selected games · ${result.legs.length} with enough history · ${refresh ? 'lines refreshed' : 'updated'} ${updated}${fails}`;
       $('pp-build').textContent = '↻ New prop parlays';
       $('pp-build').title = 'Re-downloads the prop lines and injury reports, then builds a new set with different props than every earlier set (new players first, then known players on a new prop type). It starts over only when too few unused props remain.';
     } catch (err) {

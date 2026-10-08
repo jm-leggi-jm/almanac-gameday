@@ -58,15 +58,19 @@ const Football = (() => {
 
   // ---------- Open-Meteo: gentle on the free API ----------
 
-  // A full week is ~14 stadiums, and firing all their forecast requests at once (again on every
-  // reload) is what drew 429 "too many requests" replies. So Open-Meteo calls go through a small
-  // queue (a few at a time), a 429 is retried after a pause, and forecasts are kept for 30 minutes
-  // in the browser's Cache Storage so reloading the page doesn't download them again.
+  // A full week is ~14 stadiums. One forecast URL covers every variable for a venue (lat/lon
+  // rounded so the same stadium is one request), kept for 30 minutes. Starts are spaced with a
+  // little jitter so a refresh isn't a burst, and a 429 waits (honoring Retry-After, plus jitter)
+  // before the next try. At most a few requests are in flight.
   const METEO_CONCURRENCY = 3;
+  const METEO_GAP_MS = 200;
+  const METEO_GAP_JITTER_MS = 200;
   const METEO_RETRY_DELAYS_MS = [2000, 4000, 8000];
+  const METEO_RETRY_CAP_MS = 30000;
   const METEO_CACHE = 'gameday-forecasts-v1';
   let meteoActive = 0;
   const meteoWaiting = [];
+  let meteoChain = Promise.resolve();
 
   async function meteoSlot(job) {
     if (meteoActive >= METEO_CONCURRENCY) await new Promise((resolve) => meteoWaiting.push(resolve));
@@ -82,12 +86,42 @@ const Football = (() => {
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  // Retry-After is either delta-seconds or an HTTP date. Anything else is ignored.
+  function parseRetryAfter(header) {
+    if (header == null || header === '') return null;
+    const seconds = Number(header);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+    const when = Date.parse(header);
+    return Number.isFinite(when) ? Math.max(0, when - Date.now()) : null;
+  }
+
+  // 80–120% of the scheduled wait, so retries from a burst don't line up.
+  const withJitter = (ms) => Math.round(ms * (0.8 + Math.random() * 0.4));
+
+  function retryWait(attempt, retryAfterHeader) {
+    const base = METEO_RETRY_DELAYS_MS[attempt];
+    const asked = parseRetryAfter(retryAfterHeader);
+    if (asked == null) return withJitter(base);
+    const floor = Math.min(Math.max(asked, base), METEO_RETRY_CAP_MS);
+    return floor + Math.round(Math.random() * Math.min(1500, floor * 0.25));
+  }
+
+  // Space out request starts. The gap runs inside a concurrency slot, before the fetch;
+  // the wait after a 429 happens outside the slot so a retry doesn't keep one occupied.
+  function meteoGap() {
+    const turn = meteoChain.then(() => sleep(METEO_GAP_MS + Math.random() * METEO_GAP_JITTER_MS));
+    meteoChain = turn.then(() => {}, () => {});
+    return turn;
+  }
+
   async function meteoFetch(url) {
     for (let attempt = 0; ; attempt++) {
-      const res = await meteoSlot(() => fetch(url));
+      const res = await meteoSlot(async () => {
+        await meteoGap();
+        return fetch(url);
+      });
       if (res.status === 429 && attempt < METEO_RETRY_DELAYS_MS.length) {
-        const retryAfter = Number(res.headers.get('Retry-After')) * 1000;
-        await sleep(retryAfter > 0 ? retryAfter : METEO_RETRY_DELAYS_MS[attempt]);
+        await sleep(retryWait(attempt, res.headers.get('Retry-After')));
         continue;
       }
       if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
@@ -104,7 +138,13 @@ const Football = (() => {
     if (cache) {
       const hit = await cache.match(url);
       const at = hit && Number(hit.headers.get('x-fetched-at'));
-      if (hit && Date.now() - at < maxAgeMs) return hit.json();
+      if (hit && Date.now() - at < maxAgeMs) {
+        try {
+          return await hit.json();
+        } catch {
+          cache.delete(url).catch(() => {});   // damaged entry: fetch a fresh copy
+        }
+      }
     }
     const res = await meteoFetch(url);
     const body = await res.text();
@@ -552,7 +592,7 @@ const Football = (() => {
       if (line != null && over != null) total = { line, over: over * 100, volume: Number(totals.volumeNum || 0) };
     }
     const out = {
-      url: `https://polymarket.com/event/${event.slug}`,
+      url: `https://polymarket.com/event/${encodeURIComponent(event.slug || '')}`,
       closed: !!ml.closed,
       home: prices[hi] * 100, away: prices[ai] * 100,
       volume, thin: volume < THIN_MARKET_USD, total,

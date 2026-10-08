@@ -102,7 +102,10 @@
   // Each card is the same stack of rows (CARD_ROWS in the CSS), and cards side by side share row
   // heights, so every section lines up across columns. Filling a slot never adds or removes rows.
   function fill(card, parts) {
-    for (const [name, html] of Object.entries(parts)) card.querySelector(`[data-slot="${name}"]`).innerHTML = html || '';
+    for (const [name, html] of Object.entries(parts)) {
+      const slot = card.querySelector(`[data-slot="${name}"]`);
+      if (slot) slot.innerHTML = html || '';
+    }
   }
 
   function hourCell(h) {
@@ -449,8 +452,8 @@
       const g = byId.get(card.dataset.id);
       if (!g || g.state !== 'in') return;
       const scores = card.querySelectorAll('.gd-score');
-      if (scores[0] && g.away.score != null) scores[0].textContent = g.away.score;
-      if (scores[1] && g.home.score != null) scores[1].textContent = g.home.score;
+      if (scores[0] && g.away && g.away.score != null) scores[0].textContent = g.away.score;
+      if (scores[1] && g.home && g.home.score != null) scores[1].textContent = g.home.score;
       const live = card.querySelector('.gd-live');
       if (live) live.textContent = `● ${g.detail || 'Live'}`;
     });
