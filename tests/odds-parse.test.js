@@ -66,6 +66,28 @@ const evenOver = check('{odds:{over:"EVEN"}}', { odds: { over: 'EVEN' } }, [100]
 assert('+100 over', evenOver.length === 1 && evenOver[0].odds === 100 && evenOver[0].side === 'over');
 check('{odds:{over:"EV"}}', { odds: { over: 'EV' } }, [100]);
 
+// Vig check for bare over/under pairs: yard-line pairs fail, real vig passes.
+check('{odds:{over:250, under:250}}', { odds: { over: 250, under: 250 } }, []);
+check('{odds:{over:250, under:260}}', { odds: { over: 250, under: 260 } }, []);
+check('{odds:{over:"245", under:"245"}}', { odds: { over: '245', under: '245' } }, []);
+check('{odds:{over:-115, under:-105}}', { odds: { over: -115, under: -105 } }, [-115, -105]);
+check('{odds:{over:"EVEN", under:"EVEN"}}', { odds: { over: 'EVEN', under: 'EVEN' } }, [100, 100]);
+check('{odds:{over:-150, under:110}}', { odds: { over: -150, under: 110 } }, [-150, 110]);
+check('{odds:{over:-300, under:250}}', { odds: { over: -300, under: 250 } }, [-300, 250]);
+check('{odds:{over:-200, under:-200}}', { odds: { over: -200, under: -200 } }, []);
+const loneNeg = check('{odds:{over:-110}}', { odds: { over: -110 } }, [-110]);
+assert('lone over -110 kept with side over', loneNeg.length === 1 && loneNeg[0].side === 'over');
+check('{odds:{over:250}}', { odds: { over: 250 } }, []);
+const loneEven = check('{odds:{over:"EVEN"}} lone', { odds: { over: 'EVEN' } }, [100]);
+assert('lone EVEN kept with side over', loneEven.length === 1 && loneEven[0].side === 'over');
+const marketName = check('{odds:{overUnderOdds:-110}}', { odds: { overUnderOdds: -110 } }, [-110]);
+assert('overUnderOdds is unsided', marketName.length === 1 && marketName[0].side == null);
+const sidedPrice = check('{odds:{overOdds:150}}', { odds: { overOdds: 150 } }, [150]);
+assert('overOdds +150 kept with side over', sidedPrice.length === 1 && sidedPrice[0].side === 'over');
+const fair = context.Football.impliedFromMoneylines(-115, -105);
+assert('de-vig -115/-105 is 51.1/48.9',
+  fair && Math.abs(fair.home - 51.1) < 0.05 && Math.abs(fair.away - 48.9) < 0.05);
+
 if (failed) {
   console.log(`${failed} failed`);
   process.exit(1);

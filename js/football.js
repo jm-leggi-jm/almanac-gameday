@@ -327,9 +327,10 @@ const Football = (() => {
     // derived from it (that total also contains the water in snow). One URL per venue.
     const vars = 'temperature_2m,apparent_temperature,precipitation_probability,rain,showers,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
     // GMT keeps hour stamps comparable with ESPN's UTC kickoff times.
-    // snowfall_unit=inch: Open-Meteo's default is centimeters, and the cards label snow in inches.
+    // Snow arrives in inches via precipitation_unit=inch (Open-Meteo lists snowfall as cm (inch);
+    // there is no separate snowfall_unit parameter).
     const url = `${FORECAST}?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${vars}&past_days=7&forecast_days=${FORECAST_DAYS}`
-      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&snowfall_unit=inch&timezone=GMT';
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT';
     const promise = meteoJSON(url, FORECAST_TTL_MS).then((d) => d.hourly);
     promise.catch(() => forecastCache.delete(key));
     forecastCache.set(key, { at: Date.now(), promise });
@@ -352,7 +353,7 @@ const Football = (() => {
     if (hit && Date.now() - hit.at < HISTORY_TTL_MS) return hit.promise;
     const vars = 'temperature_2m,apparent_temperature,rain,showers,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
     const url = `${HISTORY}?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${vars}&start_date=${start}&end_date=${end}`
-      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&snowfall_unit=inch&timezone=GMT';
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT';
     const promise = meteoJSON(url, HISTORY_TTL_MS, HISTORY_CACHE).then((d) => ({ ...d.hourly, precipitation_probability: d.hourly.time.map(() => null) }));
     promise.catch(() => { if (historyCache.get(key)?.promise === promise) historyCache.delete(key); });
     historyCache.set(key, { at: Date.now(), promise });
@@ -602,8 +603,12 @@ const Football = (() => {
   // in "id", is a whole number, and is ≤ −100 or ≥ +100 with a magnitude of at most 10,000
   // (EVEN counts as +100). A yard line such as 245.5 is not a price.
   // A nested read such as `{odds:{american:"-120"}}` is recorded once. A repeat of that same
-  // price on the same object is marked seen. A different price is left for the walk. A field
-  // named exactly over or under, with a plain number or EVEN, is recorded with that side.
+  // price on the same object is marked seen. A different price is left for the walk.
+  // `overUnderOdds` names the market, not a side, so it is kept as an unsided price like
+  // `american`. A side comes only from an exact `over`/`under` key, a field under one, or a
+  // side-prefixed key such as `overOdds`/`underOdds`. A bare over/under pair is kept only when
+  // the implied probabilities sum to 0.99–1.20; otherwise both sides are dropped. A lone bare
+  // side is kept only when negative or EVEN/EV.
   const MAX_AMERICAN_ODDS = 10000;
   function americanOddsIn(root) {
     const found = [];
@@ -627,15 +632,22 @@ const Football = (() => {
       if (t === 'EVEN' || t === 'EV') return true;
       return /^[+-]?\d+(\.\d+)?$/.test(t);
     };
+    const sideOfPart = (part) => {
+      if (/^(over|under)$/i.test(part)) return /^over$/i.test(part) ? 'over' : 'under';
+      if (/^over(?=[A-Z])/i.test(part) && !/^overUnder/i.test(part)) return 'over';
+      if (/^under(?=[A-Z])/i.test(part) && !/^underOver/i.test(part)) return 'under';
+      return null;
+    };
     const sideOf = (path) => {
       const parts = path.split(/[.[\]]/).filter(Boolean);
       for (let i = parts.length - 1; i >= 0; i--) {
-        const part = parts[i];
-        if (/^under/i.test(part) || /\bunder\b/i.test(part)) return 'under';
-        if (/^over/i.test(part) || /\bover\b/i.test(part)) return 'over';
+        const side = sideOfPart(parts[i]);
+        if (side) return side;
       }
       return null;
     };
+    const implied = (n) => (n < 0 ? -n / (-n + 100) : 100 / (n + 100));
+    const isEvenStr = (raw) => typeof raw === 'string' && /^(EVEN|EV)$/i.test(raw.trim().replace(/[−–]/g, '-').toUpperCase());
     function walk(obj, path, depth) {
       if (obj == null || depth > 8) return;
       if (Array.isArray(obj)) {
@@ -661,14 +673,11 @@ const Football = (() => {
           // when this object already recorded that number with a side.
           if (priceKey(k) && !Array.isArray(v)) {
             const local = [];
-            for (const [innerKey, raw] of Object.entries(v)) {
-              if (!/^(over|under)$/i.test(innerKey) || !plainNumber(raw)) continue;
-              const n = asAmerican(raw);
-              if (n == null) continue;
+            const recordBare = (innerKey, raw, n) => {
               const child = `${p}.${innerKey}`;
               const side = /^over$/i.test(innerKey) ? 'over' : 'under';
               const mark = `${child}:${n}`;
-              if (seen.has(mark)) continue;
+              if (seen.has(mark)) return;
               seen.add(mark);
               const hit = { path: child, odds: n, side };
               found.push(hit);
@@ -677,6 +686,29 @@ const Football = (() => {
                 if (sib === innerKey || sideOf(sib) !== side) continue;
                 if (asAmerican(sibRaw) !== n) continue;
                 seen.add(`${p}.${sib}:${n}`);
+              }
+            };
+            // Bare over/under are yard lines unless the vig says otherwise. A pair is kept only
+            // when the implied probabilities sum to 0.99–1.20; otherwise both sides are dropped
+            // so the prop falls back to assumed -110. A lone bare side can't be checked, so it is
+            // kept only when negative or EVEN/EV; a lone positive is ambiguous with a yard line.
+            const bareOver = Object.entries(v).find(([ik, raw]) => /^(over)$/i.test(ik) && plainNumber(raw));
+            const bareUnder = Object.entries(v).find(([ik, raw]) => /^(under)$/i.test(ik) && plainNumber(raw));
+            if (bareOver && bareUnder) {
+              const nOver = asAmerican(bareOver[1]);
+              const nUnder = asAmerican(bareUnder[1]);
+              if (nOver != null && nUnder != null) {
+                const total = implied(nOver) + implied(nUnder);
+                if (total >= 0.99 && total <= 1.20) {
+                  recordBare(bareOver[0], bareOver[1], nOver);
+                  recordBare(bareUnder[0], bareUnder[1], nUnder);
+                }
+              }
+            } else {
+              const lone = bareOver || bareUnder;
+              if (lone) {
+                const n = asAmerican(lone[1]);
+                if (n != null && (n < 0 || isEvenStr(lone[1]))) recordBare(lone[0], lone[1], n);
               }
             }
             const preferred = ['value', 'odds', 'american', 'price', 'americanOdds'];

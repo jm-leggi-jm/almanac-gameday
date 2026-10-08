@@ -127,12 +127,10 @@
     }
   }
 
-  let requestFailures = 0;   // lookups that failed during the current prop build
-
   // One player's recent games, newest first: [{ [statName]: number }]
-  async function recentGames(athleteId, season) {
+  async function recentGames(athleteId, season, failures) {
     const logs = await Promise.all([season, season - 1].map((s) =>
-      cachedJSON(`${WEB}/athletes/${athleteId}/gamelog?season=${s}`).catch(() => { requestFailures++; return null; })));
+      cachedJSON(`${WEB}/athletes/${athleteId}/gamelog?season=${s}`).catch(() => { failures.n++; return null; })));
     const games = [];
     for (const log of logs) {
       if (!log || !log.names) continue;
@@ -151,8 +149,8 @@
     return games.sort((a, b) => b.date.localeCompare(a.date)).slice(0, RECENT_GAMES).map((x) => x.row);
   }
 
-  async function playerInfo(athleteId) {
-    const d = await cachedJSON(`${SITE}/athletes/${athleteId}`).catch(() => { requestFailures++; return null; });
+  async function playerInfo(athleteId, failures) {
+    const d = await cachedJSON(`${SITE}/athletes/${athleteId}`).catch(() => { failures.n++; return null; });
     const a = (d && d.athlete) || {};
     return { name: a.displayName || `Player ${athleteId}`, team: (a.team && a.team.abbreviation) || '', pos: (a.position && a.position.abbreviation) || '' };
   }
@@ -188,23 +186,23 @@
 
   // `fresh`: re-download prop lines and injury reports (player game histories are still reused).
   async function buildLegs(onProgress, fresh = false) {
+    const failures = { n: 0 };   // scoped to this build, so concurrent builds can't affect each other
     const week = await Football.thisWeek();
     const games = week.games.filter((g) => g.state === 'pre' && selected.has(g.id));   // unchecked games cost no lookups
     const now = new Date();
     const season = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();   // Jan-Feb games belong to last year's season
     if (fresh) Football.clearOdds();   // injury reports come with the odds summaries
-    requestFailures = 0;
-    const props = (await Promise.all(games.map((g) => gameProps(g, fresh).catch(() => { requestFailures++; return []; })))).flat();
+    const props = (await Promise.all(games.map((g) => gameProps(g, fresh).catch(() => { failures.n++; return []; })))).flat();
     // Injury reports (from the game summaries the game cards already load): player id -> status.
     const injuryById = new Map();
-    const summaries = await Promise.all(games.map((g) => Football.odds(g).catch(() => { requestFailures++; return null; })));
+    const summaries = await Promise.all(games.map((g) => Football.odds(g).catch(() => { failures.n++; return null; })));
     for (const s of summaries) for (const list of Object.values((s && s.injuries) || {})) for (const i of list) injuryById.set(i.id, i.status);
     const athletes = [...new Set(props.map((p) => p.athleteId))];
     const byAthlete = new Map();
     let done = 0;
     onProgress(0, athletes.length);
     await Promise.all(athletes.map(async (id) => {
-      const [info, recent] = await Promise.all([playerInfo(id), recentGames(id, season)]);
+      const [info, recent] = await Promise.all([playerInfo(id, failures), recentGames(id, season, failures)]);
       byAthlete.set(id, { info, recent });
       onProgress(++done, athletes.length);
     }));
@@ -216,7 +214,7 @@
       if (injury && injury !== 'Questionable') return null;   // out, doubtful or suspended: likely not playing
       return { ...e, player: a.info, injury, signals: propSignals(e, injury) };
     }).filter(Boolean).sort((x, y) => (y.assumed ? y.histProb : y.prob) - (x.assumed ? x.histProb : x.prob) || y.n - x.n);
-    return { week, games: games.length, props: props.length, players: athletes.length, legs };
+    return { week, games: games.length, props: props.length, players: athletes.length, legs, failures: failures.n };
   }
 
   // Signal chips for a prop leg: line movement since open, and the player's own injury status.
@@ -469,7 +467,7 @@
       const which = startedOver ? `Set 1 again${limit} (not enough unused props were left to fill a full parlay, so this starts over from the top picks)`
         : setNumber === 1 ? `Set 1${limit}${limit ? '' : ': the top picks'}`
         : `Set ${setNumber}${limit}${limit ? '' : ': new picks'}, ${skipped ? `skipping the ${skipped} players shown in earlier sets` : 'no prop repeated from earlier sets (some players return on a different prop)'}`;
-      const fails = requestFailures ? ` · ${requestFailures} request${requestFailures === 1 ? '' : 's'} failed` : '';
+      const fails = result.failures ? ` · ${result.failures} request${result.failures === 1 ? '' : 's'} failed` : '';
       $('pp-status').textContent = `${which} · ${result.props} props from ${result.games} selected games · ${result.legs.length} with enough history · ${refresh ? 'lines refreshed' : 'updated'} ${updated}${fails}`;
       $('pp-build').textContent = '↻ New prop parlays';
       $('pp-build').title = 'Re-downloads the prop lines and injury reports, then builds a new set with different props than every earlier set (new players first, then known players on a new prop type). It starts over only when too few unused props remain.';

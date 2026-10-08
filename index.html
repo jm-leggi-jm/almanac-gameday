@@ -164,6 +164,12 @@
       <p class="muted small gd-sub">What's changed in Almanac Game Day, newest first. Times are Central.</p>
       <div class="cl">
         <h3>October 7, 2026</h3>
+        <h4>9:18 PM CT</h4>
+        <ul>
+          <li><b>Prop prices:</b> overUnderOdds names the market, not a side, so it is kept as an unsided price like american. A side comes only from an exact over/under key, a field under one, or a side-prefixed key such as overOdds/underOdds. A bare over/under pair is kept only when the implied probabilities sum to 0.99–1.20 (250/250 and 250/260 both fail, so the prop falls back to assumed −110); a lone bare side is kept only when negative or EVEN/EV.</li>
+          <li><b>Prop builds:</b> the failed-lookup counter is scoped to each build, so concurrent builds can no longer affect each other's status line.</li>
+          <li><b>Weather:</b> removed the redundant snowfall_unit=inch from the forecast and history requests. Open-Meteo documents no such parameter and lists snowfall as cm (inch), so precipitation_unit=inch already returns snow in inches.</li>
+        </ul>
         <h4>9:05 PM CT</h4>
         <ul>
           <li><b>Prop prices:</b> a yard line such as 245.5 is not American odds. Only a field named exactly over or under is a bare side, so a line, yards, or an id underneath is not a price, and overUnder is not an over. The same under number on under and underOdds counts once. The same price on two different props is kept both times. EVEN on an over is +100.</li>
