@@ -599,10 +599,11 @@ const Football = (() => {
 
   // American odds buried in an object, without assuming one field name. A number counts only when
   // its key (or its parent key, for `{american:{value:"-120"}}`) looks like a price, does not end
-  // in "id", and is ≤ −100 or ≥ +100 with a magnitude of at most 10,000 (EVEN counts as +100).
+  // in "id", is a whole number, and is ≤ −100 or ≥ +100 with a magnitude of at most 10,000
+  // (EVEN counts as +100). A yard line such as 245.5 is not a price.
   // A nested read such as `{odds:{american:"-120"}}` is recorded once. A repeat of that same
-  // price is marked seen. A different price is left for the walk, and a field named over or
-  // under is left for the walk so it keeps its side.
+  // price on the same object is marked seen. A different price is left for the walk. A field
+  // named exactly over or under, with a plain number or EVEN, is recorded with that side.
   const MAX_AMERICAN_ODDS = 10000;
   function americanOddsIn(root) {
     const found = [];
@@ -610,13 +611,21 @@ const Football = (() => {
     const priceKey = (k) => /american|odds|price|moneyline/i.test(k) && !/display/i.test(k) && !/id$/i.test(k);
     const asAmerican = (v) => {
       if (typeof v === 'number') {
-        return Number.isFinite(v) && (v <= -100 || v >= 100) && Math.abs(v) <= MAX_AMERICAN_ODDS ? v : null;
+        return Number.isFinite(v) && Number.isInteger(v) && (v <= -100 || v >= 100) && Math.abs(v) <= MAX_AMERICAN_ODDS ? v : null;
       }
       if (typeof v !== 'string') return null;
       const t = v.trim().replace(/[−–]/g, '-').toUpperCase();
       if (!t) return null;
       const n = t === 'EVEN' || t === 'EV' ? 100 : Number(t);
-      return Number.isFinite(n) && (n <= -100 || n >= 100) && Math.abs(n) <= MAX_AMERICAN_ODDS ? n : null;
+      return Number.isFinite(n) && Number.isInteger(n) && (n <= -100 || n >= 100) && Math.abs(n) <= MAX_AMERICAN_ODDS ? n : null;
+    };
+    // A bare -115, the string "-115", or EVEN/EV. Not an object, and not a yard line.
+    const plainNumber = (raw) => {
+      if (typeof raw === 'number') return Number.isFinite(raw);
+      if (typeof raw !== 'string') return false;
+      const t = raw.trim().replace(/[−–]/g, '-').toUpperCase();
+      if (t === 'EVEN' || t === 'EV') return true;
+      return /^[+-]?\d+(\.\d+)?$/.test(t);
     };
     const sideOf = (path) => {
       const parts = path.split(/[.[\]]/).filter(Boolean);
@@ -646,9 +655,30 @@ const Football = (() => {
         if (priceKey(k) && (typeof v === 'string' || typeof v === 'number')) take(asAmerican(v));
         else if (v && typeof v === 'object') {
           // `{american:{value:"-120"}}`: the price key is the parent. Record the first real price.
-          // Skip over/under names so the walk keeps their sides. Mark a field seen only when it
-          // repeats that recorded price; a different number is left for the walk.
+          // Only a key that is exactly `over` or `under` is a bare side. `overUnder` is not, and
+          // neither is a line or an id nested under an over. After a bare side, a sibling with
+          // that same side and the same number is marked seen. A sideless copy is dropped only
+          // when this object already recorded that number with a side.
           if (priceKey(k) && !Array.isArray(v)) {
+            const local = [];
+            for (const [innerKey, raw] of Object.entries(v)) {
+              if (!/^(over|under)$/i.test(innerKey) || !plainNumber(raw)) continue;
+              const n = asAmerican(raw);
+              if (n == null) continue;
+              const child = `${p}.${innerKey}`;
+              const side = /^over$/i.test(innerKey) ? 'over' : 'under';
+              const mark = `${child}:${n}`;
+              if (seen.has(mark)) continue;
+              seen.add(mark);
+              const hit = { path: child, odds: n, side };
+              found.push(hit);
+              local.push(hit);
+              for (const [sib, sibRaw] of Object.entries(v)) {
+                if (sib === innerKey || sideOf(sib) !== side) continue;
+                if (asAmerican(sibRaw) !== n) continue;
+                seen.add(`${p}.${sib}:${n}`);
+              }
+            }
             const preferred = ['value', 'odds', 'american', 'price', 'americanOdds'];
             const innerKeys = preferred.concat(Object.keys(v).filter((ik) => priceKey(ik) && !preferred.includes(ik)));
             let firstN = null;
@@ -658,6 +688,11 @@ const Football = (() => {
               if (typeof raw !== 'string' && typeof raw !== 'number') continue;
               const n = asAmerican(raw);
               if (n == null) continue;
+              if (local.some((h) => h.odds === n && h.side)) {
+                seen.add(`${p}.${innerKey}:${n}`);
+                if (firstN == null) firstN = n;
+                continue;
+              }
               if (firstN == null) {
                 take(n);
                 firstN = n;
