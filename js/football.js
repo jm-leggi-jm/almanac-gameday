@@ -607,9 +607,11 @@ const Football = (() => {
   // `overUnderOdds` names the market, not a side, so it is kept as an unsided price like
   // `american`. A side comes only from an exact `over`/`under` key, a field under one, or a
   // side-prefixed key such as `overOdds`/`underOdds`. A bare over/under pair is kept only when
-  // the implied probabilities sum to 0.99–1.20; otherwise both sides are dropped. A lone bare
-  // side is kept only when negative or EVEN/EV.
+  // the implied probabilities sum to 0.99–1.20 (both bounds inclusive) and at least one side is
+  // not an unsigned positive; otherwise both sides are dropped. A lone bare side is kept only
+  // when negative, EVEN/EV, or the explicit string "+100".
   const MAX_AMERICAN_ODDS = 10000;
+  const VIG_EPS = 1e-9;
   function americanOddsIn(root) {
     const found = [];
     const seen = new Set();
@@ -648,6 +650,14 @@ const Football = (() => {
     };
     const implied = (n) => (n < 0 ? -n / (-n + 100) : 100 / (n + 100));
     const isEvenStr = (raw) => typeof raw === 'string' && /^(EVEN|EV)$/i.test(raw.trim().replace(/[−–]/g, '-').toUpperCase());
+    const isPlus100Str = (raw) => typeof raw === 'string' && raw.trim().replace(/[−–]/g, '-') === '+100';
+    // A positive number, or a positive string with no "+" (and not EVEN/EV): 100, "100", 245.
+    const isUnsignedPositive = (raw) => {
+      if (typeof raw === 'number') return raw > 0;
+      if (typeof raw !== 'string' || isEvenStr(raw)) return false;
+      const t = raw.trim().replace(/[−–]/g, '-');
+      return !t.startsWith('+') && Number(t) > 0;
+    };
     function walk(obj, path, depth) {
       if (obj == null || depth > 8) return;
       if (Array.isArray(obj)) {
@@ -689,9 +699,11 @@ const Football = (() => {
               }
             };
             // Bare over/under are yard lines unless the vig says otherwise. A pair is kept only
-            // when the implied probabilities sum to 0.99–1.20; otherwise both sides are dropped
-            // so the prop falls back to assumed -110. A lone bare side can't be checked, so it is
-            // kept only when negative or EVEN/EV; a lone positive is ambiguous with a yard line.
+            // when the implied probabilities sum to 0.99–1.20 (inclusive) and the pair is not two
+            // unsigned positives (100/100 reads as a line); otherwise both sides are dropped so
+            // the prop falls back to assumed -110. A lone bare side can't be checked, so it is
+            // kept only when negative, EVEN/EV or the explicit "+100"; other lone positives are
+            // ambiguous with a yard line.
             const bareOver = Object.entries(v).find(([ik, raw]) => /^(over)$/i.test(ik) && plainNumber(raw));
             const bareUnder = Object.entries(v).find(([ik, raw]) => /^(under)$/i.test(ik) && plainNumber(raw));
             if (bareOver && bareUnder) {
@@ -699,7 +711,8 @@ const Football = (() => {
               const nUnder = asAmerican(bareUnder[1]);
               if (nOver != null && nUnder != null) {
                 const total = implied(nOver) + implied(nUnder);
-                if (total >= 0.99 && total <= 1.20) {
+                const bothUnsigned = isUnsignedPositive(bareOver[1]) && isUnsignedPositive(bareUnder[1]);
+                if (!bothUnsigned && total >= 0.99 - VIG_EPS && total <= 1.20 + VIG_EPS) {
                   recordBare(bareOver[0], bareOver[1], nOver);
                   recordBare(bareUnder[0], bareUnder[1], nUnder);
                 }
@@ -708,7 +721,7 @@ const Football = (() => {
               const lone = bareOver || bareUnder;
               if (lone) {
                 const n = asAmerican(lone[1]);
-                if (n != null && (n < 0 || isEvenStr(lone[1]))) recordBare(lone[0], lone[1], n);
+                if (n != null && (n < 0 || isEvenStr(lone[1]) || isPlus100Str(lone[1]))) recordBare(lone[0], lone[1], n);
               }
             }
             const preferred = ['value', 'odds', 'american', 'price', 'americanOdds'];
