@@ -226,13 +226,16 @@ const Football = (() => {
   function situation(s) {
     if (!s) return null;
     const lp = s.lastPlay || {};
-    const prob = lp.probability && lp.probability.homeWinPercentage;
+    const prob = lp.probability || {};
+    const home = prob.homeWinPercentage;
+    const tie = prob.tiePercentage;
     return {
       down: s.down > 0 ? s.down : null, distance: s.distance ?? null,
       possession: s.possession ? String(s.possession) : null,   // team id
       redZone: !!s.isRedZone,
       lastPlay: lp.text ? lp.text.trim() : null,
-      homeWin: prob == null ? null : prob * 100,
+      homeWin: home == null ? null : home * 100,
+      tie: tie == null ? 0 : tie * 100,
     };
   }
 
@@ -320,10 +323,13 @@ const Football = (() => {
     const key = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}`;
     const hit = forecastCache.get(key);
     if (hit && Date.now() - hit.at < FORECAST_TTL_MS) return hit.promise;
-    const vars = 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
+    // Rain and showers are requested on their own. Precipitation is not, so rain is never
+    // derived from it (that total also contains the water in snow). One URL per venue.
+    const vars = 'temperature_2m,apparent_temperature,precipitation_probability,rain,showers,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
     // GMT keeps hour stamps comparable with ESPN's UTC kickoff times.
+    // snowfall_unit=inch: Open-Meteo's default is centimeters, and the cards label snow in inches.
     const url = `${FORECAST}?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${vars}&past_days=7&forecast_days=${FORECAST_DAYS}`
-      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT';
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&snowfall_unit=inch&timezone=GMT';
     const promise = meteoJSON(url, FORECAST_TTL_MS).then((d) => d.hourly);
     promise.catch(() => forecastCache.delete(key));
     forecastCache.set(key, { at: Date.now(), promise });
@@ -344,9 +350,9 @@ const Football = (() => {
     const key = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)},${start},${end}`;
     const hit = historyCache.get(key);
     if (hit && Date.now() - hit.at < HISTORY_TTL_MS) return hit.promise;
-    const vars = 'temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
+    const vars = 'temperature_2m,apparent_temperature,rain,showers,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
     const url = `${HISTORY}?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${vars}&start_date=${start}&end_date=${end}`
-      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=GMT';
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&snowfall_unit=inch&timezone=GMT';
     const promise = meteoJSON(url, HISTORY_TTL_MS, HISTORY_CACHE).then((d) => ({ ...d.hourly, precipitation_probability: d.hourly.time.map(() => null) }));
     promise.catch(() => { if (historyCache.get(key)?.promise === promise) historyCache.delete(key); });
     historyCache.set(key, { at: Date.now(), promise });
@@ -368,7 +374,10 @@ const Football = (() => {
       hours.push({
         at: new Date(`${h.time[i]}Z`),
         temp: h.temperature_2m[i], feels: h.apparent_temperature[i],
-        pop: h.precipitation_probability[i], precip: h.precipitation[i] || 0, snow: h.snowfall[i] || 0,
+        pop: h.precipitation_probability ? h.precipitation_probability[i] : null,
+        rain: Array.isArray(h.rain) ? (h.rain[i] || 0) : 0,
+        showers: Array.isArray(h.showers) ? (h.showers[i] || 0) : 0,
+        snow: (h.snowfall && h.snowfall[i]) || 0,
         code: h.weather_code[i], wind: h.wind_speed_10m[i], gust: h.wind_gusts_10m[i], dir: h.wind_direction_10m[i],
       });
     }
@@ -381,7 +390,10 @@ const Football = (() => {
       hours,
       tempStart: hours[0].temp, tempEnd: hours[hours.length - 1].temp,
       feelsMin: min('feels'), feelsMax: max('feels'),
-      popMax: max('pop'), precip: sum('precip'), snow: sum('snow'),
+      popMax: max('pop'),
+      tempMin: min('temp'),
+      rain: (Array.isArray(h.rain) || Array.isArray(h.showers)) ? sum('rain') + sum('showers') : null,
+      snow: sum('snow'),
       windMax: max('wind'), gustMax: max('gust'), windDir: compass(hours[0].dir || 0),
       code: worst.code, condition: WMO[worst.code] || 'Unknown',
     };
@@ -389,30 +401,39 @@ const Football = (() => {
 
   // ---------- Impact on play ----------
 
-  // Levels: 0 none (roof), 1 low, 2 moderate, 3 high. Thresholds are rules of thumb for NFL play:
-  // sustained wind near 20 mph and gusts past 30 affect passing and kicking; heavy rain, snow, lightning,
-  // bitter cold and heat each change how a game is played or managed.
+  // Levels: 0 none (any roof), 1 low, 2 moderate, 3 high. A fixed roof or a retractable roof
+  // gets no weather level: teams close a retractable roof when the weather would matter.
+  // Open-air flags are rules of thumb and each factor is one reason. Snow is a flag only
+  // (it does not raise the level). Wind tier 1 is ≥15 mph or gusts ≥25; tier 2 is ≥20 or gusts ≥35.
   // `past`: the game has been played, so rain is judged by what fell rather than the forecast chance.
   function impact(w, roof, past = false) {
     if (roof === 'dome' || roof === 'canopy') {
       return { level: 0, label: 'None', reasons: [roof === 'dome' ? 'Indoors: weather won’t affect play' : 'Roof covers the field'] };
     }
+    if (roof === 'retractable') {
+      return { level: 0, label: 'None', reasons: ['retractable roof, usually closed in bad weather'] };
+    }
     const reasons = [];
     let level = 1;
     const add = (lvl, text) => { reasons.push(text); level = Math.max(level, lvl); };
     if (w.code >= 95) add(3, 'Thunderstorms: lightning delays possible');
-    if (w.snow >= 0.5) add(3, `Snow (${w.snow.toFixed(1)}″)`);
-    else if (w.snow > 0.05) add(2, 'Some snow');
-    if (past) {
-      if (w.precip >= 0.25) add(3, `Heavy rain (${w.precip.toFixed(2)}″ fell)`);
-      else if (w.precip >= 0.03) add(2, `Rain (${w.precip.toFixed(2)}″ fell)`);
-      else if (w.precip > 0) add(1, 'A little rain');
-    } else if (w.precip >= 0.25 && w.popMax >= 50) add(3, `Heavy rain (${w.precip.toFixed(2)}″)`);
-    else if (w.popMax >= 50 && w.precip >= 0.03) add(2, `Rain likely (${Math.round(w.popMax)}%)`);
-    else if (w.popMax >= 30) add(1, `Chance of showers (${Math.round(w.popMax)}%)`);
-    if (w.windMax >= 20 || w.gustMax >= 35) add(3, `Strong wind (${Math.round(w.windMax)} mph, gusts ${Math.round(w.gustMax)})`);
-    else if (w.windMax >= 13 || w.gustMax >= 25) add(2, `Breezy (${Math.round(w.windMax)} mph, gusts ${Math.round(w.gustMax)})`);
+    if (w.snow >= 0.5) reasons.push(`Snow (${w.snow.toFixed(1)}″)`);
+    else if (w.snow > 0.05) reasons.push('Some snow');
+    const rain = Number.isFinite(w.rain) ? w.rain : null;
+    if (rain != null) {
+      if (past) {
+        if (rain >= 0.25) add(3, `Heavy rain (${rain.toFixed(2)}″ fell)`);
+        else if (rain >= 0.03) add(2, `Rain (${rain.toFixed(2)}″ fell)`);
+        else if (rain > 0) add(1, 'A little rain');
+      } else if (rain >= 0.25 && w.popMax >= 50) add(3, `Heavy rain (${rain.toFixed(2)}″)`);
+      else if (w.popMax >= 50 && rain >= 0.03) add(2, `Rain likely (${Math.round(w.popMax)}%)`);
+      else if (w.popMax >= 30) add(1, `Chance of showers (${Math.round(w.popMax)}%)`);
+    }
+    if (w.windMax >= 20 || w.gustMax >= 35) add(3, `Strong wind (${Math.round(w.windMax)} mph, gusts ${Math.round(w.gustMax)}): passing and kicking`);
+    else if (w.windMax >= 15 || w.gustMax >= 25) add(2, `Wind (${Math.round(w.windMax)} mph, gusts ${Math.round(w.gustMax)}): passing and kicking`);
+    const airMin = Number.isFinite(w.tempMin) ? w.tempMin : null;
     if (w.feelsMin <= 10) add(3, `Bitter cold (feels ${Math.round(w.feelsMin)}°)`);
+    else if (airMin != null && airMin < 20) add(2, `Below 20°F (${Math.round(airMin)}°)`);
     else if (w.feelsMin <= 32) add(2, `Cold (feels ${Math.round(w.feelsMin)}°)`);
     if (w.feelsMax >= 95) add(3, `Heat (feels ${Math.round(w.feelsMax)}°)`);
     else if (w.feelsMax >= 88) add(2, `Hot (feels ${Math.round(w.feelsMax)}°)`);
@@ -469,8 +490,30 @@ const Football = (() => {
     return { homeMax: max * 100, homeMin: min * 100, maxLate: maxAt > half, minLate: minAt > half };
   }
 
+  function linesFromPick(p) {
+    const ps = p.pointSpread || {};
+    const ml = p.moneyline || {};
+    const tot = p.total || {};
+    const homeLine = num(ps.home && ps.home.close && ps.home.close.line) ?? (p.spread != null ? p.spread : null);
+    return {
+      provider: (p.provider && (p.provider.displayName || p.provider.name)) || 'Sportsbook',
+      providerId: p.provider && p.provider.id != null && p.provider.id !== '' ? String(p.provider.id) : '',
+      homeLine,
+      homeOpen: num(ps.home && ps.home.open && ps.home.open.line),
+      homeSpreadOdds: (ps.home && ps.home.close && ps.home.close.odds) || null,
+      awaySpreadOdds: (ps.away && ps.away.close && ps.away.close.odds) || null,
+      total: p.overUnder ?? num(tot.over && tot.over.close && tot.over.close.line),
+      totalOpen: num(tot.over && tot.over.open && tot.over.open.line),
+      overOdds: (tot.over && tot.over.close && tot.over.close.odds) || null,
+      underOdds: (tot.under && tot.under.close && tot.under.close.odds) || null,
+      mlHome: (ml.home && ml.home.close && ml.home.close.odds) || null,
+      mlAway: (ml.away && ml.away.close && ml.away.close.odds) || null,
+      mlHomeOpen: (ml.home && ml.home.open && ml.home.open.odds) || null,
+      mlAwayOpen: (ml.away && ml.away.open && ml.away.open.odds) || null,
+    };
+  }
+
   function parseOdds(summary, g) {
-    const p = (summary.pickcenter || [])[0];
     const pred = summary.predictor || {};
     const winHome = num(pred.homeTeam && pred.homeTeam.gameProjection);
     const winAway = num(pred.awayTeam && pred.awayTeam.gameProjection);
@@ -484,28 +527,18 @@ const Football = (() => {
       const home = wp[0].homeWinPercentage * 100;
       win = { home, away: 100 - home - (wp[0].tiePercentage || 0) * 100, pregame: true };
     }
-    const out = { win, lines: null, injuries: parseInjuries(summary), stats: parseStats(summary, g), wpRange: winProbRange(wp) };
-    if (!p) return out;
-    const ps = p.pointSpread || {};
-    const ml = p.moneyline || {};
-    const tot = p.total || {};
-    const homeLine = num(ps.home && ps.home.close && ps.home.close.line) ?? (p.spread != null ? p.spread : null);
-    out.lines = {
-      provider: (p.provider && (p.provider.displayName || p.provider.name)) || 'Sportsbook',
-      homeLine,                                                   // negative = home favored
-      homeOpen: num(ps.home && ps.home.open && ps.home.open.line),
-      homeSpreadOdds: (ps.home && ps.home.close && ps.home.close.odds) || null,
-      awaySpreadOdds: (ps.away && ps.away.close && ps.away.close.odds) || null,
-      total: p.overUnder ?? num(tot.over && tot.over.close && tot.over.close.line),
-      totalOpen: num(tot.over && tot.over.open && tot.over.open.line),
-      overOdds: (tot.over && tot.over.close && tot.over.close.odds) || null,
-      underOdds: (tot.under && tot.under.close && tot.under.close.odds) || null,
-      mlHome: (ml.home && ml.home.close && ml.home.close.odds) || null,
-      mlAway: (ml.away && ml.away.close && ml.away.close.odds) || null,
-      mlHomeOpen: (ml.home && ml.home.open && ml.home.open.odds) || null,
-      mlAwayOpen: (ml.away && ml.away.open && ml.away.open.odds) || null,
-    };
-    return out;
+    // One row per sportsbook. ESPN's pickcenter odds are DraftKings (provider id 100), the same
+    // book the cards already call the book feed, so a repeated provider id is dropped.
+    const books = [];
+    const seenProviders = new Set();
+    for (const pick of summary.pickcenter || []) {
+      const row = linesFromPick(pick);
+      const key = row.providerId || `name:${row.provider.trim().toLowerCase()}`;
+      if (seenProviders.has(key)) continue;
+      seenProviders.add(key);
+      books.push(row);
+    }
+    return { win, lines: books[0] || null, books, injuries: parseInjuries(summary), stats: parseStats(summary, g), wpRange: winProbRange(wp) };
   }
 
   // Current injury report from the same summary: { TEAM: [{ id, name, pos, status }] }.
@@ -536,6 +569,111 @@ const Football = (() => {
     return promise;
   }
 
+  // Mean of the de-vigged book probabilities, or the median when there are 3 or more.
+  function combineFair(probs) {
+    const xs = (probs || []).filter((p) => Number.isFinite(p));
+    if (!xs.length) return null;
+    if (xs.length >= 3) {
+      const s = [...xs].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    }
+    return xs.reduce((a, b) => a + b, 0) / xs.length;
+  }
+
+  // 70% books / 30% Polymarket. `usePoly` is false when the market has no real volume, and the
+  // result is then the books alone. Never the larger of the two.
+  function blendFair(book, poly, usePoly) {
+    if (!Number.isFinite(book)) return usePoly && Number.isFinite(poly) ? poly : null;
+    if (!usePoly || !Number.isFinite(poly)) return book;
+    return 0.7 * book + 0.3 * poly;
+  }
+
+  // Live win shares on a 0–100 scale. Away is what's left after home and the tie.
+  function winShares(homePct, tiePct) {
+    const home = Math.max(0, Number(homePct) || 0);
+    const tie = Math.max(0, Number(tiePct) || 0);
+    const away = Math.max(0, 100 - home - tie);
+    return { home, away, tie, showTie: tie >= 1 };
+  }
+
+  // American odds buried in an object, without assuming one field name. A number counts only when
+  // its key (or its parent key, for `{american:{value:"-120"}}`) looks like a price, does not end
+  // in "id", and is ≤ −100 or ≥ +100 with a magnitude of at most 10,000 (EVEN counts as +100).
+  // A nested read such as `{odds:{american:"-120"}}` is recorded once. A repeat of that same
+  // price is marked seen. A different price is left for the walk, and a field named over or
+  // under is left for the walk so it keeps its side.
+  const MAX_AMERICAN_ODDS = 10000;
+  function americanOddsIn(root) {
+    const found = [];
+    const seen = new Set();
+    const priceKey = (k) => /american|odds|price|moneyline/i.test(k) && !/display/i.test(k) && !/id$/i.test(k);
+    const asAmerican = (v) => {
+      if (typeof v === 'number') {
+        return Number.isFinite(v) && (v <= -100 || v >= 100) && Math.abs(v) <= MAX_AMERICAN_ODDS ? v : null;
+      }
+      if (typeof v !== 'string') return null;
+      const t = v.trim().replace(/[−–]/g, '-').toUpperCase();
+      if (!t) return null;
+      const n = t === 'EVEN' || t === 'EV' ? 100 : Number(t);
+      return Number.isFinite(n) && (n <= -100 || n >= 100) && Math.abs(n) <= MAX_AMERICAN_ODDS ? n : null;
+    };
+    const sideOf = (path) => {
+      const parts = path.split(/[.[\]]/).filter(Boolean);
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const part = parts[i];
+        if (/^under/i.test(part) || /\bunder\b/i.test(part)) return 'under';
+        if (/^over/i.test(part) || /\bover\b/i.test(part)) return 'over';
+      }
+      return null;
+    };
+    function walk(obj, path, depth) {
+      if (obj == null || depth > 8) return;
+      if (Array.isArray(obj)) {
+        obj.forEach((x, i) => walk(x, `${path}[${i}]`, depth + 1));
+        return;
+      }
+      if (typeof obj !== 'object') return;
+      for (const [k, v] of Object.entries(obj)) {
+        if (k === '$ref' || k === 'lastUpdated') continue;
+        const p = path ? `${path}.${k}` : k;
+        const take = (odds) => {
+          const mark = `${p}:${odds}`;
+          if (odds == null || seen.has(mark)) return;
+          seen.add(mark);
+          found.push({ path: p, odds, side: sideOf(p) });
+        };
+        if (priceKey(k) && (typeof v === 'string' || typeof v === 'number')) take(asAmerican(v));
+        else if (v && typeof v === 'object') {
+          // `{american:{value:"-120"}}`: the price key is the parent. Record the first real price.
+          // Skip over/under names so the walk keeps their sides. Mark a field seen only when it
+          // repeats that recorded price; a different number is left for the walk.
+          if (priceKey(k) && !Array.isArray(v)) {
+            const preferred = ['value', 'odds', 'american', 'price', 'americanOdds'];
+            const innerKeys = preferred.concat(Object.keys(v).filter((ik) => priceKey(ik) && !preferred.includes(ik)));
+            let firstN = null;
+            for (const innerKey of innerKeys) {
+              if (sideOf(`${p}.${innerKey}`)) continue;
+              const raw = v[innerKey];
+              if (typeof raw !== 'string' && typeof raw !== 'number') continue;
+              const n = asAmerican(raw);
+              if (n == null) continue;
+              if (firstN == null) {
+                take(n);
+                firstN = n;
+              }
+              if (n !== firstN) continue;
+              seen.add(`${p}.${innerKey}:${n}`);
+            }
+          }
+          walk(v, p, depth + 1);
+        }
+      }
+    }
+    walk(root, '', 0);
+    return found;
+  }
+
   // Sportsbook moneylines -> win chances with the bookmaker's margin ("vig") removed, so they sum to 100%.
   function impliedFromMoneylines(mlHome, mlAway) {
     const p = (ml) => { const n = num(ml); return n == null || n === 0 ? null : n < 0 ? -n / (-n + 100) : 100 / (n + 100); };
@@ -553,7 +691,12 @@ const Football = (() => {
   const PM = 'https://gamma-api.polymarket.com';
   const PM_CLOB = 'https://clob.polymarket.com';
   const PM_ABBR = { LAR: 'la', WSH: 'was' };      // where Polymarket's team codes differ from ESPN's
-  const THIN_MARKET_USD = 1000;                   // below this much traded, prices mean little
+  // Moneyline: today's books run from about $5k to $131k traded, with much more sitting available.
+  // Each total line is thinner, so its floor is lower. A missing liquidity figure does not skip the market.
+  const ML_MIN_VOLUME = 10000;
+  const ML_MIN_LIQUIDITY = 10000;
+  const TOTAL_MIN_VOLUME = 2500;
+  const TOTAL_MIN_LIQUIDITY = 5000;
   const marketCache = new Map();
 
   const pmCode = (abbr) => PM_ABBR[abbr] || abbr.toLowerCase();
@@ -580,28 +723,56 @@ const Football = (() => {
     let hi = outcomes.findIndex((o) => matches(o, g.home));
     let ai = outcomes.findIndex((o) => matches(o, g.away));
     if (hi < 0 || ai < 0) { ai = 0; hi = 1; }       // Polymarket orders away team first
-    const volume = Number(ml.volumeNum ?? ml.volume ?? 0);
-    const totals = markets.filter((m) => m.sportsMarketType === 'totals')
-      .sort((a, b) => Number(b.volumeNum || 0) - Number(a.volumeNum || 0))[0];
-    let total = null;
-    if (totals && Number(totals.volumeNum || 0) >= THIN_MARKET_USD) {   // untraded total markets sit at placeholder lines
-      const line = num((totals.question.match(/O\/U\s*([\d.]+)/) || [])[1]);
-      const tp = JSON.parse(totals.outcomePrices || '[]').map(Number);
-      const to = JSON.parse(totals.outcomes || '[]');
-      const over = tp[to.indexOf('Over')];
-      if (line != null && over != null) total = { line, over: over * 100, volume: Number(totals.volumeNum || 0) };
+    // Number(null) and Number('') are 0, which would look like a real zero. Skip those.
+    const moneyOf = (...vals) => {
+      for (const v of vals) {
+        if (v == null || v === '') continue;
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+      }
+      return null;
+    };
+    const volume = moneyOf(ml.volumeNum, ml.volume) ?? 0;
+    const liquidity = moneyOf(ml.liquidityNum, ml.liquidity, ml.liquidityClob);
+    const moneylineThin = volume < ML_MIN_VOLUME || (liquidity != null && liquidity < ML_MIN_LIQUIDITY);
+    // Every total line, not just the busiest one. A book can move to a quieter line that still qualifies.
+    const byLine = new Map();
+    for (const mkt of markets) {
+      if (mkt.sportsMarketType !== 'totals') continue;
+      const line = num(((mkt.question || '').match(/O\/U\s*([\d.]+)/) || [])[1]);
+      let to = [];
+      let tp = [];
+      try {
+        to = JSON.parse(mkt.outcomes || '[]');
+        tp = JSON.parse(mkt.outcomePrices || '[]').map(Number);
+      } catch { continue; }
+      const oi = to.findIndex((x) => /^over$/i.test(String(x)));
+      const ui = to.findIndex((x) => /^under$/i.test(String(x)));
+      const overPx = tp[oi];
+      const underPx = tp[ui];
+      if (line == null || !(overPx > 0) || !(underPx > 0)) continue;
+      const vol = moneyOf(mkt.volumeNum, mkt.volume) ?? 0;
+      const liq = moneyOf(mkt.liquidityNum, mkt.liquidity, mkt.liquidityClob);
+      const thin = vol < TOTAL_MIN_VOLUME || (liq != null && liq < TOTAL_MIN_LIQUIDITY);
+      const row = { line, over: (overPx / (overPx + underPx)) * 100, volume: vol, thin };
+      const prev = byLine.get(line);
+      if (!prev || row.volume > prev.volume) byLine.set(line, row);
     }
+    const parsedTotals = [...byLine.values()];
+    const totals = parsedTotals.filter((t) => !t.thin).map(({ line, over, volume: vol }) => ({ line, over, volume: vol }));
+    const thinTotals = parsedTotals.filter((t) => t.thin).map(({ line, over, volume: vol }) => ({ line, over, volume: vol }));
+    const total = totals.slice().sort((a, b) => b.volume - a.volume)[0] || null;
     const out = {
       url: `https://polymarket.com/event/${encodeURIComponent(event.slug || '')}`,
       closed: !!ml.closed,
       home: prices[hi] * 100, away: prices[ai] * 100,
-      volume, thin: volume < THIN_MARKET_USD, total,
+      volume, liquidity, thin: moneylineThin, total, totals, thinTotals,
     };
     if (g.state !== 'pre') {
       const tokens = JSON.parse(ml.clobTokenIds || '[]');
       const homePre = tokens[hi] ? await pregamePrice(tokens[hi], g.kickoff).catch(() => null) : null;
       if (homePre == null) return null;
-      Object.assign(out, { home: homePre * 100, away: (1 - homePre) * 100, pregame: true, total: null });
+      Object.assign(out, { home: homePre * 100, away: (1 - homePre) * 100, pregame: true, total: null, totals: [], thinTotals: [] });
     }
     return out;
   }
@@ -669,5 +840,8 @@ const Football = (() => {
     oddsCache.clear();
   }
 
-  return { clearCaches, clearOdds, clearSeason, teams, teamSchedule, thisWeek, seasonSoFar, locate, hourly, pastHourly, gameWindow, impact, confidence, odds, market, impliedFromMoneylines, bettingResult, ROOF_LABEL, FORECAST_DAYS };
+  return {
+    clearCaches, clearOdds, clearSeason, teams, teamSchedule, thisWeek, seasonSoFar, locate, hourly, pastHourly, gameWindow, impact, confidence, odds, market,
+    impliedFromMoneylines, combineFair, blendFair, winShares, americanOddsIn, bettingResult, ROOF_LABEL, FORECAST_DAYS,
+  };
 })();

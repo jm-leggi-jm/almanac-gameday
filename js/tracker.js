@@ -91,10 +91,17 @@ const Tracker = (() => {
     if (s && s.redZone) parts.push('<span class="trk-rz">Red zone</span>');
     let wp = '';
     if (s && s.homeWin != null) {
-      const h = Math.round(s.homeWin);
+      const shares = Football.winShares(s.homeWin, s.tie);
+      const h = Math.round(shares.home);
+      // A hidden tie is folded into the away share so the two numbers add to 100.
+      const a = shares.showTie ? Math.round(shares.away) : 100 - h;
+      const t = Math.round(shares.tie);
+      const tieSeg = shares.showTie ? `<span class="tie" style="width:${shares.tie}%"></span>` : '';
+      const awayW = shares.showTie ? shares.away : shares.away + shares.tie;
+      const tieText = shares.showTie ? ` · Tie ${t}%` : '';
       wp = `<div class="trk-wp" title="ESPN live win probability">
-          <div class="gd-prob-bar"><span class="away" style="width:${100 - h}%"></span><span class="home" style="width:${h}%"></span></div>
-          <span>${esc(g.away.abbr)} ${100 - h}% · ${esc(g.home.abbr)} ${h}%</span></div>`;
+          <div class="gd-prob-bar"><span class="away" style="width:${awayW}%"></span>${tieSeg}<span class="home" style="width:${shares.home}%"></span></div>
+          <span>${esc(g.away.abbr)} ${a}% · ${esc(g.home.abbr)} ${h}%${tieText}</span></div>`;
     }
     return `
       <li class="trk-game state-${g.state}">

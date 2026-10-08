@@ -82,8 +82,8 @@
       <div id="gd-strip" class="gd-strip" aria-label="Collapsed live games" hidden></div>
       <div id="gd-list" class="gd-list"></div>
       <p class="fine">Forecasts cover each game's window: kickoff through about three hours later, at the stadium.
-        Live games come first; within live and upcoming, dome games are listed last: <b>Dome</b> and <b>Covered</b> stadiums keep weather off the field (the outside forecast is shown for fans),
-        and <b>Retractable</b> roofs are usually decided on game day. Open-air and retractable-roof games show a radar of current conditions around the stadium (folded under <i>Show radar</i> when the weather risk is low); dome games don’t.
+        Live games come first; within live and upcoming, dome games are listed last: <b>Dome</b> and <b>Covered</b> stadiums keep weather off the field (the outside forecast is shown for fans).
+        A <b>retractable</b> roof shows the note “retractable roof, usually closed in bad weather” and gets no weather adjustment. Open-air and retractable-roof games show a radar of current conditions around the stadium (folded under <i>Show radar</i> when the weather risk is low); dome games don’t.
         Times are in your computer's time zone.</p>
       <p class="fine">Odds &amp; projections: sportsbook lines via ESPN, ESPN's Matchup Predictor, and Polymarket prices, shown for information only.
         Prices and lines change constantly. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
@@ -112,14 +112,16 @@
       <p id="p-sub" class="muted small gd-sub"></p>
 
       <div class="p-group-head first"><h3>Player-prop parlays</h3><span class="muted small">3, 4, 5 and 6 legs, player props only</span></div>
-      <p class="p-read"><b>How to read a card:</b> <i>Chance it hits</i> comes from each player's past games; <i>Break-even</i> is how often the parlay must hit for the payout to be worth it, at the assumed −110 per leg. Past games usually make these look better than they are (⚠).</p>
+      <p class="p-read"><b>How to read a card:</b> <i>Chance it hits</i> is a market estimate, no edge implied. A leg with both sides priced uses that price with the vig removed. A leg without a price prints <b>assumed −110</b> and counts as 50%. <i>Break-even</i> uses the posted or assumed price, vig included.</p>
       <div class="p-how">
         <p>Built from DraftKings' player over/unders via ESPN (passing, rushing and receiving yards, and receptions) for the upcoming games you pick this week (all by default), in any stadium.
-          Each prop takes the side the player's history favors: how often he cleared that line in his last 16 games (this season and last), pulled toward 50% so a
-          small sample can't look like a sure thing. Players need at least 6 games. Only props whose line sits inside the player's normal range count (he cleared it
+          When both sides have an American price (any field whose name looks like a price, and only a number ≤ −100 or ≥ +100), the card takes the favored side of that de-vigged price.
+          Otherwise the side comes from how often he cleared that line in his last 16 games (this season and last), pulled toward 50% so a
+          small sample can't look like a sure thing. That history is shown on the leg and used to order the card. It is not the hit chance when the price is assumed.
+          Players need at least 6 games. Only props whose line sits inside the player's normal range count (he cleared it
           in 20–80% of those games): lines far outside it are alternate lines, or signs the sportsbook knows about a new role or an injury. Tiny lines (under 1.5 receptions,
-          14.5 rushing or receiving yards, 149.5 passing yards) are skipped too. Legs are the likeliest first, with one per player and at most 2 per game (more when you pick only a few games, so the big parlays can fill).</p>
-        <p><b>* ESPN doesn't publish prop prices,</b> so each leg is assumed to be −110 (the usual price for these lines). The real payout will differ, so check the sportsbook.</p>
+          14.5 rushing or receiving yards, 149.5 passing yards) are skipped too. Legs are ordered likeliest first, with one per player and at most 2 per game (more when you pick only a few games, so the big parlays can fill). Two legs from the same game are flagged; the hit chance still multiplies them.</p>
+        <p><b>assumed −110</b> is printed on every leg whose feed has no usable American odds. Those legs are 50% in the hit chance (what −110 on both sides is after the vig comes out) and are not a real estimate. The payout still uses −110, vig included. Check the sportsbook.</p>
       </div>
       <div id="pp-games" class="pp-games"></div>
       <div class="pp-bar">
@@ -132,13 +134,12 @@
       <div class="p-how">
         <p><b>How these are built.</b> This week's games that haven't started, in two groups: <b>open-air stadiums only</b>,
           and <b>all stadiums</b> (domes, covered and retractable roofs too). Each game adds one leg, a <b>moneyline</b> or an <b>over/under</b>,
-          whichever has the higher estimated chance:</p>
+          whichever favorite has the higher fair chance. The card starts on favored sides. <b>Other side</b> switches that leg to the underdog.</p>
         <ul>
-          <li><b>Moneyline:</b> the average of ESPN's projection, Polymarket (when it's actually traded) and DraftKings' moneyline with the bookmaker's margin removed.</li>
-          <li><b>Over/under:</b> DraftKings' total with the margin removed, averaged with Polymarket's over/under at the same line. For <b>open-air games only</b>, stadium weather adds a few points to the Under:
-            strong wind +6, breezy +3, heavy rain or snow +5, rain likely +2 (capped at +10). That's a rule of thumb, and legs marked <span class="p-wx">weather</span> were affected.
-            Indoor games get no weather adjustment: a fixed roof keeps it off the field, and retractable roofs are usually closed when it's bad.</li>
-          <li>Legs are ranked by estimated chance, and each parlay takes the top 4, 6, 8 or 10. Odds are DraftKings' via ESPN.</li>
+          <li><b>Books:</b> ESPN's posted odds are DraftKings, the same book as the book feed, so that book is counted once. The Matchup Predictor stays on the game card and is not blended in. If more books are posted, their de-vigged prices are averaged, or the median when there are three or more.</li>
+          <li><b>Polymarket</b> is divided so the two sides add up (home and away, or over and under). That is not sportsbook vig math. The moneyline is blended 70% books / 30% Polymarket only when it has traded at least $10,000 and, when a liquidity figure is posted, has at least $10,000 available. A total is used only at the book's number, and only when that line has traded at least $2,500 (and has at least $5,000 available when liquidity is posted). Otherwise the leg uses the books only. The blend is a weighted average.</li>
+          <li><b>Weather</b> is a flag only. It does not change the chance. Domes, covered stadiums, and retractable roofs get no numeric adjustment: ATL, DAL, HOU, IND, ARI, DET, NO, MIN, LV, and SoFi (LAR/LAC). A retractable roof is noted “retractable roof, usually closed in bad weather”.</li>
+          <li><b>Payout</b> uses the posted American odds, vig included. <b>Chance it hits</b> multiplies the de-vigged leg prices. That is a market estimate, no edge implied. A tie usually pushes a moneyline out of the parlay; the math ignores that.</li>
         </ul>
       </div>
 
@@ -147,14 +148,15 @@
       <div id="p-list-late" class="p-list"></div>
 
       <div class="p-subgroup"><h4>Open-air stadiums only</h4><span id="p-count-open" class="muted small"></span></div>
-      <p class="p-read"><b>How to read a card:</b> <i>Chance it hits</i> is our estimate that every leg wins. <i>Break-even</i> is how often it must hit for the payout to be worth it.</p>
+      <p class="p-read"><b>How to read a card:</b> <i>Chance it hits</i> is a market estimate, no edge implied. <i>Break-even</i> is how often the posted payout, vig included, must hit to get the stake back. Favored legs are labeled. <b>Other side</b> is a pick you made.</p>
       <div id="p-list-open" class="p-list"></div>
 
       <div class="p-subgroup"><h4>All stadiums, including domes and retractable roofs</h4><span id="p-count-all" class="muted small"></span></div>
       <div id="p-list-all" class="p-list"></div>
 
-      <p class="fine"><b>For information only, not betting advice.</b> <i>Chance it hits</i> multiplies each leg's chance, as if games were independent;
-        <i>Break-even</i> is the chance the combined payout implies, which includes the sportsbook's margin on every leg. Parlays rarely hit, and a longer parlay is far less likely to.
+      <p class="fine"><b>For information only, not betting advice.</b> <i>Chance it hits</i> is a market estimate, no edge implied. It multiplies each leg's de-vigged price, as if the legs were independent.
+        <i>Break-even</i> is the chance the combined payout implies, which includes the sportsbook's margin on every leg. A tie usually pushes that moneyline out of the parlay; ties are left out of the math.
+        Parlays rarely hit, and a longer parlay is far less likely to.
         Lines move constantly. Check the sportsbook before betting. 21+. Gambling problem? Call 1-800-GAMBLER.</p>
     </section>
     <section class="card span-2" id="changelog-view" aria-labelledby="cl-title" hidden>
@@ -162,6 +164,32 @@
       <p class="muted small gd-sub">What's changed in Almanac Game Day, newest first. Times are Central.</p>
       <div class="cl">
         <h3>October 7, 2026</h3>
+        <h4>12:17 PM CT</h4>
+        <ul>
+          <li><b>Review round 5:</b> over and under prices inside an odds object are both kept, with their sides. A second, different price is kept too. Only a repeated copy of the same price is skipped.</li>
+        </ul>
+        <h4>12:13 PM CT</h4>
+        <ul>
+          <li><b>Review round 4:</b> when one odds object repeats the same price under more than one name, such as value and american, that price is read once.</li>
+        </ul>
+        <h4>12:10 PM CT</h4>
+        <ul>
+          <li><b>Prop prices:</b> a nested price such as odds.american is read once. One real price no longer looks like two and falls back to assumed −110.</li>
+        </ul>
+        <h4>12:03 PM CT</h4>
+        <ul>
+          <li><b>Polymarket totals:</b> every total line that has enough trading is kept, and the parlay uses the one at the sportsbook’s number. A busier line at a different total no longer crowds the matching one out.</li>
+          <li><b>When a price counts:</b> an id such as oddsId is not read as American odds, a price nested under a name like american.value is, and a number past 10,000 is ignored. A blank volume is not treated as zero. Books are matched by the sportsbook’s id.</li>
+          <li><b>Floors:</b> a Polymarket moneyline needs at least $10,000 traded and $10,000 available. Each total line needs at least $2,500 traded and, when liquidity is posted, $5,000 available.</li>
+          <li><b>Tracker and weather:</b> when the tie is under 1%, the away share is 100 minus the home share. Below 20°F uses the air temperature.</li>
+        </ul>
+        <h4>11:50 AM CT</h4>
+        <ul>
+          <li><b>Parlay chances:</b> book odds have the vig removed and the legs are multiplied. ESPN’s posted line is DraftKings, so that book is counted once, then blended 70/30 with Polymarket only when the market has real volume and liquidity. The auto card is favorites. The payout uses the posted odds, vig included, and the card says the hit chance is a market estimate, no edge implied. Weather no longer changes the chance.</li>
+          <li><b>Prop prices:</b> a real American price is used when both sides have one. Otherwise the leg prints “assumed −110” and counts as 50%. Two props from the same game are flagged.</li>
+          <li><b>Weather:</b> domes, covered stadiums, and retractable roofs get no numeric adjustment. Retractable roofs say “retractable roof, usually closed in bad weather.” Rain uses Open-Meteo’s rain and showers, not total precipitation. Wind flags start at 15 mph or a 25 mph gust. Snow is a flag only. Below 20°F is its own cold flag.</li>
+          <li><b>Tracker:</b> the away team’s win share is what’s left after the home team and a tie. The tie is shown when it is at least 1%.</li>
+        </ul>
         <h4>11:24 AM CT</h4>
         <ul>
           <li><b>Weather requests:</b> stadium forecasts are still one download per venue, reused for 30 minutes. Starts are spaced out with a short random pause, and a “too many requests” reply now waits (a little jitter, and at least as long as the server asks) before trying again. The offline cache no longer hides that reply, so the wait actually happens. A damaged saved forecast is fetched again instead of breaking the card.</li>

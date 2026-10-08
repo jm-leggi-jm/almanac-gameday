@@ -1,8 +1,8 @@
 // Parlays tab: 4-, 6-, 8- and 10-leg parlays from this week's not-yet-started games, built twice:
 // open-air stadiums only, and all stadiums (domes, covered and retractable roofs too). Each game
-// contributes one leg, either a moneyline or an over/under, whichever our estimate says is more
-// likely. Weather only adjusts totals for open-air games. Legs are ranked by that estimate and each
-// parlay takes the top N. Informational only.
+// contributes one leg, either a moneyline or an over/under, whichever favored side has the higher
+// fair chance. The auto card is favorites only; Other side flips that one leg. Weather is a flag,
+// not a change to the chance. The payout uses the posted odds (vig included). Informational only.
 (() => {
   const SIZES = [4, 6, 8, 10];
   const AFTERNOON_SIZES = [2, 3, 4];   // the Sunday 4 PM slate is usually only 3-5 games
@@ -15,10 +15,6 @@
   }
   const TAB_KEY = 'almanac-gameday.tab';
   const STAKE = 5;   // payouts are shown for a $5 bet
-
-  // Weather nudges toward the Under (rule of thumb): wind hurts passing and kicking; heavy rain and
-  // snow slow games down. Percentage points added to the Under's chance, capped.
-  const UNDER_BUMP = { strongWind: 6, breezy: 3, heavyPrecip: 5, rainLikely: 2, cap: 10 };
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -43,44 +39,71 @@
   }
   const showAmerican = (s) => String(s).replace('-', MINUS);
   const pct = (p) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`;
-  const avg = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
   // ---------- One leg per game ----------
 
-  function underBump(w) {
-    if (!w) return { bump: 0, why: [] };
-    let bump = 0;
-    const why = [];
-    if (w.windMax >= 20 || w.gustMax >= 35) { bump += UNDER_BUMP.strongWind; why.push(`wind ${Math.round(w.windMax)} mph, gusts ${Math.round(w.gustMax)}`); }
-    else if (w.windMax >= 13 || w.gustMax >= 25) { bump += UNDER_BUMP.breezy; why.push(`breezy ${Math.round(w.windMax)} mph, gusts ${Math.round(w.gustMax)}`); }
-    if ((w.precip >= 0.25 && w.popMax >= 50) || w.snow >= 0.5) { bump += UNDER_BUMP.heavyPrecip; why.push(w.snow >= 0.5 ? 'snow' : 'heavy rain'); }
-    else if (w.popMax >= 50 && w.precip >= 0.03) { bump += UNDER_BUMP.rainLikely; why.push(`rain likely (${Math.round(w.popMax)}%)`); }
-    return { bump: Math.min(bump, UNDER_BUMP.cap), why };
+  const bookList = (o) => (o && o.books && o.books.length ? o.books : (o && o.lines ? [o.lines] : []));
+
+  // Fair home (or over) probability from each distinct book, vig removed. ESPN's posted odds are
+  // DraftKings, so that name appears once. The Matchup Predictor is not a book and is not included.
+  function bookFair(books, fairOf) {
+    const rows = [];
+    for (const b of books) {
+      const p = fairOf(b);
+      if (p == null) continue;
+      rows.push({ name: b.provider || 'Sportsbook', p });
+    }
+    return rows;
+  }
+
+  // `skip` is why Polymarket was left out, or null when it was used or there is no market.
+  function blendDetail(rows, poly, usePoly, skip, pickPositive) {
+    const side = (p) => (pickPositive ? p : 1 - p);
+    const parts = rows.map((r) => `${r.name} ${Math.round(side(r.p) * 100)}%`);
+    if (usePoly) parts.push(`Polymarket ${Math.round(side(poly) * 100)}%`);
+    else if (skip) parts.push(`Polymarket left out (${skip})`);
+    const blended = Football.blendFair(Football.combineFair(rows.map((r) => r.p)), poly, usePoly);
+    if (blended != null) parts.push(`blend ${Math.round(side(blended) * 100)}%`);
+    return parts.join(' · ');
   }
 
   function moneylineLeg(g, o, m) {
-    const l = o && o.lines;
-    if (!l || !l.mlHome || !l.mlAway) return null;
-    const book = Football.impliedFromMoneylines(l.mlHome, l.mlAway);
-    const sources = [];
-    if (o.win) sources.push({ name: 'ESPN', home: o.win.home / (o.win.home + o.win.away) });
-    if (m && !m.thin) sources.push({ name: 'Polymarket', home: m.home / (m.home + m.away) });
-    if (book) sources.push({ name: 'DraftKings', home: book.home / 100 });
-    if (!sources.length) return null;
-    const home = avg(sources.map((s) => s.home));
+    const books = bookList(o);
+    const rows = bookFair(books, (b) => {
+      const fair = Football.impliedFromMoneylines(b.mlHome, b.mlAway);
+      return fair ? fair.home / 100 : null;
+    });
+    const posted = books.find((b) => b.mlHome && b.mlAway) || null;
+    if (!posted) return null;
+    const usePoly = !!(m && !m.thin && m.home + m.away > 0);
+    const polyHome = usePoly ? m.home / (m.home + m.away) : null;
+    const skip = usePoly || !m || !m.thin ? null : 'thin market';
+    const home = Football.blendFair(Football.combineFair(rows.map((r) => r.p)), polyHome, usePoly);
+    if (home == null) return null;
     const pickHome = home >= 0.5;
-    const pickProbs = sources.map((s) => ({ name: s.name, p: pickHome ? s.home : 1 - s.home }));
+    const sideSources = (positive) => {
+      const list = rows.map((r) => ({ name: r.name, p: positive ? r.p : 1 - r.p }));
+      if (usePoly) list.push({ name: 'Polymarket', p: positive ? polyHome : 1 - polyHome });
+      return list;
+    };
+    const signalsFor = (homeSide) => [
+      movementSignal(homeSide ? posted.mlHomeOpen : posted.mlAwayOpen, homeSide ? posted.mlHome : posted.mlAway),
+      agreementSignal(sideSources(homeSide)),
+      injurySignal(o && o.injuries, g, homeSide ? g.home.abbr : g.away.abbr),
+    ].filter(Boolean);
     return {
       g, kind: 'Moneyline',
       pick: `${pickHome ? g.home.abbr : g.away.abbr} to win`,
-      odds: pickHome ? l.mlHome : l.mlAway,
+      otherPick: `${pickHome ? g.away.abbr : g.home.abbr} to win`,
+      odds: pickHome ? posted.mlHome : posted.mlAway,
+      otherOdds: pickHome ? posted.mlAway : posted.mlHome,
       prob: pickHome ? home : 1 - home,
-      detail: pickProbs.map((s) => `${s.name} ${Math.round(s.p * 100)}%`).join(' · '),
-      signals: [
-        movementSignal(pickHome ? l.mlHomeOpen : l.mlAwayOpen, pickHome ? l.mlHome : l.mlAway),
-        agreementSignal(pickProbs),
-        injurySignal(o.injuries, g, pickHome ? g.home.abbr : g.away.abbr),
-      ].filter(Boolean),
+      favored: home !== 0.5,
+      detail: blendDetail(rows, polyHome, usePoly, skip, pickHome),
+      otherDetail: blendDetail(rows, polyHome, usePoly, skip, !pickHome),
+      signals: signalsFor(pickHome),
+      otherSignals: signalsFor(!pickHome),
+      weather: [],
     };
   }
 
@@ -120,7 +143,7 @@
     const lo = sorted[0];
     const hi = sorted[sorted.length - 1];
     const gap = Math.round((hi.p - lo.p) * 100);
-    if (gap <= 5) return { tone: 'good', text: `✓ Sources agree (within ${gap} pts)`, tip: 'ESPN, Polymarket and DraftKings are close on this outcome.' };
+    if (gap <= 5) return { tone: 'good', text: `✓ Sources agree (within ${gap} pts)`, tip: 'The sportsbook prices and Polymarket are close on this outcome.' };
     if (gap <= 12) return { tone: 'neutral', text: `≈ Sources differ by ${gap} pts`, tip: `${hi.name} ${Math.round(hi.p * 100)}% vs ${lo.name} ${Math.round(lo.p * 100)}%.` };
     return { tone: 'bad', text: `✗ Sources disagree: ${hi.name} ${Math.round(hi.p * 100)}% vs ${lo.name} ${Math.round(lo.p * 100)}%`, tip: 'A wide split means the outcome is less settled than the average suggests.' };
   }
@@ -143,38 +166,56 @@
     return { tone: 'bad', text: `${serious ? '✖' : '⚠'} ${text}`, tip: `Injuries on ${pickedTeam} (the pick) work against this leg; injuries on the opponent help it.` };
   }
 
-  function totalLeg(g, o, m, w) {
-    const l = o && o.lines;
-    if (!l || l.total == null || !l.overOdds || !l.underOdds) return null;
-    const book = Football.impliedFromMoneylines(l.overOdds, l.underOdds);   // "home" = over here
-    if (!book) return null;
-    const overs = [book.home / 100];
-    const parts = [`DraftKings over ${Math.round(book.home)}%`];
-    if (m && m.total && m.total.line === l.total) { overs.push(m.total.over / 100); parts.push(`Polymarket over ${Math.round(m.total.over)}%`); }
-    let over = avg(overs);
-    const { bump, why } = underBump(w);
-    over -= bump / 100;
-    if (bump) parts.push(`weather +${bump} pts to Under: ${why.join(', ')}`);
-    const pickOver = over > 0.5;
-    const probs = [{ name: 'DraftKings', p: book.home / 100 }];
-    if (m && m.total && m.total.line === l.total) probs.push({ name: 'Polymarket', p: m.total.over / 100 });
+  function totalLeg(g, o, m) {
+    const books = bookList(o);
+    const posted = books.find((b) => b.total != null && b.overOdds && b.underOdds) || null;
+    if (!posted) return null;
+    // Only books at the same number. A 44.5 and a 47.5 are different bets.
+    const rows = bookFair(books, (b) => {
+      if (b.total !== posted.total || !b.overOdds || !b.underOdds) return null;
+      const fair = Football.impliedFromMoneylines(b.overOdds, b.underOdds);   // "home" = over
+      return fair ? fair.home / 100 : null;
+    });
+    // Every qualifying total is kept. Match the book's number; a busier line at a different total is a different bet.
+    const match = m && (m.totals || []).find((t) => t.line === posted.total);
+    const usePoly = !!match;
+    const polyOver = usePoly ? match.over / 100 : null;
+    let skip = null;
+    if (!usePoly && m) {
+      const thinHit = (m.thinTotals || []).some((t) => t.line === posted.total);
+      skip = thinHit ? 'thin total' : 'no total at this line';
+    }
+    const over = Football.blendFair(Football.combineFair(rows.map((r) => r.p)), polyOver, usePoly);
+    if (over == null) return null;
+    const pickOver = over >= 0.5;
+    const sideSources = (positive) => {
+      const list = rows.map((r) => ({ name: r.name, p: positive ? r.p : 1 - r.p }));
+      if (usePoly) list.push({ name: 'Polymarket', p: positive ? polyOver : 1 - polyOver });
+      return list;
+    };
+    const signalsFor = (overSide) => [
+      totalMovementSignal(posted.totalOpen, posted.total, overSide),
+      agreementSignal(sideSources(overSide)),
+      injurySignal(o && o.injuries, g, null),
+    ].filter(Boolean);
     return {
       g, kind: 'Total',
-      pick: `${pickOver ? 'Over' : 'Under'} ${l.total}`,
-      odds: pickOver ? l.overOdds : l.underOdds,
+      pick: `${pickOver ? 'Over' : 'Under'} ${posted.total}`,
+      otherPick: `${pickOver ? 'Under' : 'Over'} ${posted.total}`,
+      odds: pickOver ? posted.overOdds : posted.underOdds,
+      otherOdds: pickOver ? posted.underOdds : posted.overOdds,
       prob: pickOver ? over : 1 - over,
-      detail: parts.join(' · '),
-      weather: bump > 0,
-      signals: [
-        totalMovementSignal(l.totalOpen, l.total, pickOver),
-        agreementSignal(probs.map((x) => ({ name: x.name, p: pickOver ? x.p : 1 - x.p }))),
-        injurySignal(o.injuries, g, null),
-      ].filter(Boolean),
+      favored: over !== 0.5,
+      detail: blendDetail(rows, polyOver, usePoly, skip, pickOver),
+      otherDetail: blendDetail(rows, polyOver, usePoly, skip, !pickOver),
+      signals: signalsFor(pickOver),
+      otherSignals: signalsFor(!pickOver),
+      weather: [],
     };
   }
 
-  // Weather only counts for open-air games: a fixed roof keeps it off the field, and retractable
-  // roofs are usually closed when it's bad.
+  // Open-air games get weather flags. A roof gets none of the forecast: retractable roofs carry
+  // one fixed note, and domes and canopies are already labeled on the leg.
   async function weatherFor(g) {
     if (g.roof !== 'open') return null;
     try {
@@ -184,15 +225,26 @@
     } catch { return null; }
   }
 
+  function weatherFlags(g, w) {
+    if (g.roof === 'retractable') return ['retractable roof, usually closed in bad weather'];
+    if (g.roof !== 'open' || !w) return [];
+    const imp = Football.impact(w, 'open');
+    return imp.reasons.filter((r) => r !== 'Good football weather');
+  }
+
   async function legFor(g) {
     const [o, m, w] = await Promise.all([
       Football.odds(g).catch(() => null),
       Football.market(g).catch(() => null),
       weatherFor(g),
     ]);
-    const options = [moneylineLeg(g, o, m), totalLeg(g, o, m, w)].filter((x) => x && decimalOdds(x.odds));
+    const flags = weatherFlags(g, w);
+    const options = [moneylineLeg(g, o, m), totalLeg(g, o, m)].filter((x) => x && decimalOdds(x.odds) && decimalOdds(x.otherOdds));
     if (!options.length) return null;
-    return options.sort((a, b) => b.prob - a.prob)[0];
+    // One market per game: the favorite with the higher fair chance. Not the max across sources.
+    const leg = options.sort((a, b) => b.prob - a.prob)[0];
+    leg.weather = flags;
+    return leg;
   }
 
   // ---------- Rendering ----------
@@ -222,8 +274,22 @@
   }
   window.ParlaySignals = { dropdown: flagsDropdown };
 
+  // The stored leg is the favorite. A flip shows the other side of the same market.
+  function shownLeg(leg, flipped) {
+    if (!flipped) return { ...leg, userPick: false };
+    return {
+      ...leg,
+      pick: leg.otherPick,
+      odds: leg.otherOdds,
+      prob: 1 - leg.prob,
+      detail: leg.otherDetail,
+      signals: leg.otherSignals,
+      userPick: true,
+    };
+  }
+
   // `kind` names the pool in the not-enough message ("open-air" or "upcoming").
-  function parlayCard(size, legs, kind) {
+  function parlayCard(size, legs, kind, pool) {
     if (legs.length < size) {
       return `
         <article class="parlay">
@@ -231,22 +297,27 @@
           <p class="gd-wait">Not enough eligible games this week. There are ${legs.length} ${kind} games with posted odds.</p>
         </article>`;
     }
-    const chosen = legs.slice(0, size);
+    const chosen = legs.slice(0, size).map((l) => shownLeg(l, flips.has(`${pool}|${size}|${l.g.id}`)));
     const decimal = chosen.reduce((a, l) => a * decimalOdds(l.odds), 1);
     const ours = chosen.reduce((a, l) => a * l.prob, 1);
     const priced = 1 / decimal;
     const money = (v) => `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const pays = STAKE * decimal;
-    const rows = chosen.map((l) => `
+    const rows = chosen.map((l) => {
+      const tag = l.userPick ? 'you picked this side' : (l.favored ? 'favored' : 'even');
+      const flags = (l.weather || []).map((w) => `<span class="p-wx">${esc(w)}</span>`).join(' ');
+      return `
       <li class="p-leg">
         <div class="p-leg-top">
           <span class="p-game">${esc(l.g.shortName)}${l.g.roof !== 'open' ? ` <span class="p-roof">${esc(Football.ROOF_LABEL[l.g.roof])}</span>` : ''}</span>
-          <b class="p-pick">${esc(l.pick)}</b>
+          <b class="p-pick">${esc(l.pick)} <span class="p-side">${esc(tag)}</span></b>
           <span class="p-odds">${esc(showAmerican(l.odds))}</span>
           <span class="p-prob">${pct(l.prob)}</span>
         </div>
-        <div class="p-why">${esc(l.kind)}${l.weather ? ' <span class="p-wx">weather</span>' : ''} · ${esc(l.detail)}</div>
-      </li>`).join('');
+        <div class="p-why">${esc(l.kind)}${flags ? ` ${flags}` : ''} · ${esc(l.detail)}
+          <button type="button" class="small ghost p-flip" data-flip="${esc(pool)}|${size}|${esc(l.g.id)}">${l.userPick ? 'Favored side' : 'Other side'}</button></div>
+      </li>`;
+    }).join('');
     return `
       <article class="parlay">
         <header class="p-head">
@@ -254,21 +325,43 @@
           <span class="p-total">${americanFromDecimal(decimal)}</span>
         </header>
         <dl class="p-stats">
-          <div title="What a $${STAKE} bet returns if every leg hits, including your $${STAKE} back.">
-            <dt>$${STAKE} bet pays</dt><dd>${money(pays)}</dd><span class="p-sub">if every leg hits</span></div>
-          <div title="Every leg's chance multiplied together: how often this parlay should hit, by our numbers (ESPN, Polymarket and DraftKings blended).">
-            <dt>Chance it hits</dt><dd>${pct(ours)}</dd><span class="p-sub">our estimate</span></div>
-          <div title="How often the parlay must hit for this payout to break even. It's what the sportsbook's price implies.">
+          <div title="What a $${STAKE} bet returns if every leg hits, including your $${STAKE} back. The price is the posted American odds, vig included.">
+            <dt>$${STAKE} bet pays</dt><dd>${money(pays)}</dd><span class="p-sub">posted price, vig included</span></div>
+          <div title="Each leg's de-vigged price, multiplied. This is the market's estimate, with no edge implied.">
+            <dt>Chance it hits</dt><dd>${pct(ours)}</dd><span class="p-sub">market estimate, no edge implied</span></div>
+          <div title="How often the parlay must hit for this payout to break even. It's what the sportsbook's price implies, vig included.">
             <dt>Break-even</dt><dd>${pct(priced)}</dd><span class="p-sub">what this payout needs</span></div>
         </dl>
+        <p class="p-note">Market estimate, no edge implied.</p>
         ${flagsDropdown(chosen, (l) => (l.kind === 'Total' ? `${l.pick} (${l.g.shortName})` : l.pick))}
         <ol class="p-legs">${rows}</ol>
       </article>`;
   }
 
   let token = 0;
+  let cached = null;
+  const flips = new Set();   // pool|size|gameId, cleared on a rebuild
+
+  function paint() {
+    if (!cached) return;
+    const { week, legs, upcoming } = cached;
+    const openLegs = legs.filter((l) => l.g.roof === 'open');
+    const openGames = upcoming.filter((g) => g.roof === 'open').length;
+    const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    $('p-sub').textContent = `${week.label} · ${upcoming.length} upcoming games (${openGames} open-air) · ${legs.length} with posted odds · updated ${updated}`;
+    $('p-count-open').textContent = `${openLegs.length} eligible games`;
+    $('p-count-all').textContent = `${legs.length} eligible games`;
+    $('p-list-open').innerHTML = SIZES.map((n) => parlayCard(n, openLegs, 'open-air', 'open')).join('');
+    $('p-list-all').innerHTML = SIZES.map((n) => parlayCard(n, legs, 'upcoming', 'all')).join('');
+    const lateLegs = legs.filter((l) => isAfternoonWindow(l.g.kickoff));
+    $('p-count-late').textContent = `${lateLegs.length} games that haven't kicked off`;
+    $('p-list-late').innerHTML = AFTERNOON_SIZES.map((n) => parlayCard(n, lateLegs, 'afternoon-window', 'late')).join('');
+  }
+
   async function render() {
     const t = ++token;
+    flips.clear();
+    cached = null;
     $('p-sub').textContent = 'Building parlays…';
     $('p-list-open').innerHTML = '';
     $('p-list-all').innerHTML = '';
@@ -282,6 +375,7 @@
     }
     const upcoming = week.games.filter((g) => g.state === 'pre');
     // One leg per game, worked out once; the open-air parlays use the open-air subset.
+    // Ranked by the favorite's fair chance, so the auto card is favorites only.
     let legs;
     try {
       legs = (await Promise.all(upcoming.map(legFor))).filter(Boolean).sort((a, b) => b.prob - a.prob);
@@ -290,17 +384,8 @@
       return;
     }
     if (t !== token) return;
-    const openLegs = legs.filter((l) => l.g.roof === 'open');
-    const openGames = upcoming.filter((g) => g.roof === 'open').length;
-    const updated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    $('p-sub').textContent = `${week.label} · ${upcoming.length} upcoming games (${openGames} open-air) · ${legs.length} with posted odds · updated ${updated}`;
-    $('p-count-open').textContent = `${openLegs.length} eligible games`;
-    $('p-count-all').textContent = `${legs.length} eligible games`;
-    $('p-list-open').innerHTML = SIZES.map((n) => parlayCard(n, openLegs, 'open-air')).join('');
-    $('p-list-all').innerHTML = SIZES.map((n) => parlayCard(n, legs, 'upcoming')).join('');
-    const lateLegs = legs.filter((l) => isAfternoonWindow(l.g.kickoff));
-    $('p-count-late').textContent = `${lateLegs.length} games that haven't kicked off`;
-    $('p-list-late').innerHTML = AFTERNOON_SIZES.map((n) => parlayCard(n, lateLegs, 'afternoon-window')).join('');
+    cached = { week, legs, upcoming };
+    paint();
   }
 
   // ---------- Tabs ----------
@@ -322,6 +407,13 @@
     if (b) setTab(b.dataset.tab);
   });
   $('p-rebuild').addEventListener('click', render);
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-flip]');
+    if (!b || !cached) return;
+    const k = b.dataset.flip;
+    if (flips.has(k)) flips.delete(k); else flips.add(k);
+    paint();
+  });
 
   // A link ending in #games, #parlays or #past opens that tab; otherwise the last tab used.
   let saved = 'games';
