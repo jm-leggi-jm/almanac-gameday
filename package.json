@@ -1,0 +1,9 @@
+{
+  "name": "almanac-gameday",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static NFL game-day weather, radar, and odds page",
+  "scripts": {
+    "test": "node tests/odds-parse.test.js"
+  }
+}
