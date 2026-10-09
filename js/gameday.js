@@ -65,6 +65,31 @@
     return { text: `${date} · ${time}`, rel, days };
   }
 
+  function renderMarketPulse(games) {
+    const pulse = $('market-pulse');
+    if (!games.length) {
+      pulse.innerHTML = '';
+      pulse.hidden = true;
+      return;
+    }
+    const live = games.filter((g) => g.state === 'in');
+    const upcoming = games.filter((g) => g.state !== 'in');
+    const outdoor = games.filter((g) => !['dome', 'canopy'].includes(g.roof));
+    const next = upcoming.slice().sort((a, b) => a.kickoff - b.kickoff)[0];
+    const matchup = next ? `${next.away.abbr} @ ${next.home.abbr}` : 'All games live';
+    const kickoff = next ? when(next).rel || when(next).text : 'Now';
+    pulse.hidden = false;
+    pulse.innerHTML = `
+      <div class="pulse-lead">
+        <span class="pulse-kicker">Game Day Command Center</span>
+        <strong class="pulse-title">${esc(matchup)}</strong>
+        <span class="pulse-copy">${esc(kickoff)} · weather signals update in each matchup card</span>
+      </div>
+      <div class="pulse-stat"><strong class="pulse-value">${live.length}</strong><span class="pulse-label">live now</span></div>
+      <div class="pulse-stat"><strong class="pulse-value">${upcoming.length}</strong><span class="pulse-label">upcoming</span></div>
+      <div class="pulse-stat"><strong class="pulse-value">${outdoor.length}</strong><span class="pulse-label">outdoor / variable roof</span></div>`;
+  }
+
   function team(t) {
     if (!t) return '<span class="gd-team">TBD</span>';
     const logo = t.logo ? `<img src="${esc(t.logo)}" alt="" width="28" height="28" loading="lazy">` : '';
@@ -377,8 +402,10 @@
       $('gd-list').innerHTML = `<p class="empty-note">${note}</p>`;
       $('gd-strip').innerHTML = '';
       $('gd-strip').hidden = true;
+      renderMarketPulse(games);
       return;
     }
+    renderMarketPulse(games);
     $('gd-list').innerHTML = games.map(cardShell).join('');
     $('gd-strip').innerHTML = '';
     $('gd-list').querySelectorAll('.game').forEach((card) => {

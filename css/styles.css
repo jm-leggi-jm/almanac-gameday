@@ -258,6 +258,8 @@ td { border-bottom: 1px solid var(--grid); padding: 8px; vertical-align: top; }
   .span-2 { grid-column: auto; }
   .loc { flex-basis: 100%; }
   h1 { font-size: 26px; }
+  .market-pulse { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pulse-lead { grid-column: 1 / -1; }
   input, select, textarea { font-size: 16px; }
 }
 
@@ -286,6 +288,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Game day weather */
 .gd-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .gd-sub { margin: -4px 0 12px; }
+.market-pulse {
+  display: grid; grid-template-columns: 1.45fr repeat(3, minmax(110px, 1fr)); gap: 8px;
+  margin: 0 0 16px; padding: 10px; border: 1px solid var(--grid); border-radius: 10px;
+  background: linear-gradient(115deg, color-mix(in srgb, var(--accent) 13%, var(--surface)), var(--surface) 58%);
+}
+.market-pulse[hidden] { display: none; }
+.pulse-lead, .pulse-stat { min-width: 0; padding: 7px 10px; border-radius: 7px; }
+.pulse-lead { border-left: 3px solid var(--accent); }
+.pulse-kicker { display: block; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.pulse-title { display: block; margin-top: 1px; font-size: 15px; font-weight: 750; }
+.pulse-copy, .pulse-label { display: block; color: var(--text-2); font-size: 12px; }
+.pulse-stat { background: color-mix(in srgb, var(--surface) 82%, transparent); }
+.pulse-value { display: block; font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.pulse-label { margin-top: -1px; }
 /* Every card is the same 10 rows (header, venue, now, hours, impact, confidence, odds bars, lines,
    result, radar). Cards in the same grid row share those row heights through subgrid, so each
    section starts at the same height across columns even when a card has less in it. */
